@@ -734,5 +734,10 @@ public class Stimulation : MonoBehaviour
         verifyStimMode();
         return validMode;
     }
+
+    public bool isTestMode()
+    {
+        return testMode;
+    }
     #endregion
 }

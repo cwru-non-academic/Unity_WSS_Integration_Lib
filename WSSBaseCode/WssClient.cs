@@ -29,6 +29,7 @@ public sealed class WssClient : IDisposable
     /// <summary>Initializes a new client over the provided transport and frame codec.</summary>
     /// <param name="transport">Underlying byte transport (e.g., serial, BLE).</param>
     /// <param name="codec">Frame codec (escape/unescape + checksum).</param>
+    /// <param name="versionHandler">Firmware version handler for capability checks and message variants.</param>
     /// <param name="sender">Sender address byte (defaults to 0x00).</param>
     public WssClient(ITransport transport, IFrameCodec codec, WSSVersionHandler versionHandler, byte sender = 0x00)
     {
@@ -45,7 +46,7 @@ public sealed class WssClient : IDisposable
     /// <param name="ct">The cancellation token to observe.</param>
     /// <returns>A task representing the asynchronous connection operation.</returns>
     /// <exception cref="InvalidOperationException">Thrown if already connected to the target.</exception>
-    /// <exception cref="IOException">Thrown if the connection attempt fails.</exception>
+    /// <exception cref="System.IO.IOException">Thrown if the connection attempt fails.</exception>
     /// <exception cref="OperationCanceledException">Thrown if the operation is canceled.</exception>
     public Task ConnectAsync(CancellationToken ct = default) => _transport.ConnectAsync(ct);
 
@@ -55,7 +56,7 @@ public sealed class WssClient : IDisposable
     /// <param name="ct">The cancellation token to observe.</param>
     /// <returns>A task representing the asynchronous disconnection operation.</returns>
     /// <exception cref="InvalidOperationException">Thrown if not connected to the target.</exception>
-    /// <exception cref="IOException">Thrown if the disconnection fails due to a transport error.</exception>
+    /// <exception cref="System.IO.IOException">Thrown if the disconnection fails due to a transport error.</exception>
     /// <exception cref="OperationCanceledException">Thrown if the operation is canceled.</exception>
     public Task DisconnectAsync(CancellationToken ct = default) => _transport.DisconnectAsync(ct);
 
@@ -102,7 +103,7 @@ public sealed class WssClient : IDisposable
     /// <param name="ct">Cancellation token. A 2s internal timeout is also applied.</param>
     /// <returns>Processed response string.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="framed"/> is null.</exception>
-    /// <exception cref="IOException">Thrown if the underlying connection encounters an error.</exception>
+    /// <exception cref="System.IO.IOException">Thrown if the underlying connection encounters an error.</exception>
     /// <exception cref="OperationCanceledException">Thrown if the operation is canceled.</exception>
     private async Task<string> SendAwaitOneAsync(
         TaskCompletionSource<byte[]> tcs,
@@ -328,6 +329,8 @@ public sealed class WssClient : IDisposable
     /// Clears groups of resources (0x40): 0=All, 1=Events, 2=Schedules, 3=Contacts.
     /// </summary>
     /// <param name="configIndex">Clear events(1), schedules(2), contacts(3), all(0).</param>
+    /// <param name="target">Target device to send to.</param>
+    /// <param name="ct">Cancellation token to cancel the send/wait.</param>
     public Task<string> Clear(int configIndex, WssTarget target = WssTarget.Wss1, CancellationToken ct = default)
     {
         // Validate and convert ints into bytes
@@ -340,6 +343,8 @@ public sealed class WssClient : IDisposable
     /// Gets settings or information for that target WSS (0x01): 0=serial number, 1=settings array.
     /// </summary>
     /// <param name="moduleIndex">serial number(0), settings array(1).</param>
+    /// <param name="target">Target device to send to.</param>
+    /// <param name="ct">Cancellation token to cancel the send/wait.</param>
     public Task<string> ModuleQuery(int moduleIndex, WssTarget target = WssTarget.Wss1, CancellationToken ct = default)
     {
         // Validate and convert ints into bytes

@@ -389,7 +389,7 @@ public class StimulationParams : MonoBehaviour
     public float GetStimParam(string key) => WSS.GetStimParam(key);
 
     /// <summary>Tries to read a parameter by dotted key.</summary>
-    /// <inheritdoc cref="IStimParamsCore.TryGetStimParam(string,out float)"/>
+    /// <inheritdoc cref="WSSInterfacing.IStimParamsCore.TryGetStimParam(string, out float)"/>
     public bool TryGetStimParam(string key, out float v) => WSS.TryGetStimParam(key, out v);
 
     /// <summary>Returns a copy of all current params as dotted-key map.</summary>

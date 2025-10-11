@@ -84,7 +84,7 @@ public sealed class StimParamsLayer : IStimParamsCore
     /// <inheritdoc cref="StimParamsConfigController.GetStimParam(string)"/>
     public float GetStimParam(string key) => _ctrl.GetStimParam(key);
 
-    /// <inheritdoc cref="StimParamsConfigController.TryGetStimParam(string,out float)"/>
+    /// <inheritdoc cref="WSSInterfacing.StimParamsConfigController.TryGetStimParam(string, out float)"/>
     public bool TryGetStimParam(string key, out float value) => _ctrl.TryGetStimParam(key, out value);
 
     /// <inheritdoc cref="StimParamsConfigController.GetAllStimParams"/>
@@ -154,7 +154,7 @@ public sealed class StimParamsLayer : IStimParamsCore
     /// <inheritdoc cref="IStimulationCore.Ready"/>
     public bool Ready() => _core.Ready();
 
-    /// <inheritdoc cref="IStimulationCore.StimulateAnalog(string,int,float,int)"/>
+    /// <inheritdoc cref="IStimulationCore.StimulateAnalog(int,int,float,int)"/>
     public void StimulateAnalog(int ch, int pw, float amp, int ipi) => _core.StimulateAnalog(ch, pw, amp, ipi);
 
     /// <inheritdoc cref="IStimulationCore.ZeroOutStim(WssTarget)"/>

@@ -1,4 +1,4 @@
-# WSSInterfacingCode
+# WSS Unity Interface
 C# class that has all the methods to communicate with the WSS and software specific classes that implements some of the functionalities necessary for that program.
 
 ## How to add a submodule to exiting project
@@ -33,7 +33,8 @@ C# class that has all the methods to communicate with the WSS and software speci
 4. Pulling a submodule will add a change in commit ID to the main repo. 
 	- Multiple changes in commit ID can be commited to the main repo as a single commit and together with other changes to the main repo.
 
-## How to add Newtonsoft json package
-1. Open Window> Package Manager
-2. Click the top left plus sign> add package by name `com.unity.nuget.newtonsoft-json`
-3. Leave version empty and click add
+## How to update the DLLs
+1. Download the desired release version of the DLLs from [https://github.com/cwru-non-academic/WSSCoreInterface/releases](https://github.com/cwru-non-academic/WSSCoreInterface/releases).  
+2. Clear the old DLLs in `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.  
+3. Extract the ZIP file downloaded from the GitHub release page.  
+4. Paste the entire contents of the `netstandard2.1` folder into `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.

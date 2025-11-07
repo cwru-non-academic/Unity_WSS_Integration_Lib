@@ -34,7 +34,10 @@ C# class that has all the methods to communicate with the WSS and software speci
 	- Multiple changes in commit ID can be commited to the main repo as a single commit and together with other changes to the main repo.
 
 ## How to update the DLLs
-1. Download the desired release version of the DLLs from [https://github.com/cwru-non-academic/WSSCoreInterface/releases](https://github.com/cwru-non-academic/WSSCoreInterface/releases).  
+1. Download the desired release version of the DLLs from [Releases](https://github.com/cwru-non-academic/WSSCoreInterface/releases).  
 2. Clear the old DLLs in `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.  
 3. Extract the ZIP file downloaded from the GitHub release page.  
-4. Paste the entire contents of the `netstandard2.1` folder into `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.
+4. Paste the entire contents of the `WSS_Core_Interface` folder into `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.
+
+## API and other Documentation
+All documentation reagarding hardware, API, and communication protocols can be found here [WSS Docs](https://cwru-non-academic.github.io/WSS_Documentation/).

@@ -1,6 +1,9 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using System;
+using Wss.CoreModule;
+using Wss.CalibrationModule;
+using Wss.ModelModule;
 
 /// <summary>
 /// High-level Unity wrapper for the full stimulation model layer.
@@ -409,7 +412,7 @@ public class Stimulation : MonoBehaviour
         if (string.IsNullOrWhiteSpace(fingerOrAlias)) return 0;
 
         if (fingerOrAlias.StartsWith("ch", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(fingerOrAlias.AsSpan(2), out var n))
+            int.TryParse(fingerOrAlias.Substring(2), out var n))
             return n;
 
         return fingerOrAlias.ToLowerInvariant() switch

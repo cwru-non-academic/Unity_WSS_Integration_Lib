@@ -1,6 +1,8 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using System;
+using Wss.CoreModule;
+using Wss.CalibrationModule;
 
 /// <summary>
 /// Unity wrapper that composes a params layer (<c>StimParamsLayer</c>) over a core WSS implementation.
@@ -453,7 +455,7 @@ public class StimulationParams : MonoBehaviour
         if (string.IsNullOrWhiteSpace(fingerOrAlias)) return 0;
 
         if (fingerOrAlias.StartsWith("ch", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(fingerOrAlias.AsSpan(2), out var n))
+            int.TryParse(fingerOrAlias.Substring(2), out var n))
             return n;
 
         return fingerOrAlias.ToLowerInvariant() switch
@@ -469,4 +471,3 @@ public class StimulationParams : MonoBehaviour
 
     #endregion
 }
-

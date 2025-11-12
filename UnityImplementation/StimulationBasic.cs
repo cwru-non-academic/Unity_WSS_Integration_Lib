@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using Wss.CoreModule;
 
 /// <summary>
 /// Basic Unity MonoBehaviour wrapper for the WSS stimulation core.
@@ -210,7 +211,7 @@ public class Stimulationbasic : MonoBehaviour
         if (string.IsNullOrWhiteSpace(fingerOrAlias)) return 0;
 
         if (fingerOrAlias.StartsWith("ch", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(fingerOrAlias.AsSpan(2), out var n))
+            int.TryParse(fingerOrAlias.Substring(2), out var n))
             return n;
 
         return fingerOrAlias.ToLowerInvariant() switch

@@ -1,6 +1,8 @@
 # WSS Unity Interface
 C# class that has all the methods to communicate with the WSS and software specific classes that implements some of the functionalities necessary for that program.
 
+All documentation about the API and other implementations can be found in [GitHub Pages](https://cwru-non-academic.github.io/WSS_Documentation/).
+
 ## How to add a submodule to exiting project
 1. Close other software using the code solution (Unity, Visual Studio, etc)
 2. If using git desktop, open the command prompt by going to `Repository>Open in Command Prompt`

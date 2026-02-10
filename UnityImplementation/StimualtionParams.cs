@@ -1,14 +1,19 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using System;
 using Wss.CoreModule;
 using Wss.CalibrationModule;
 
 /// <summary>
-/// Unity wrapper that composes a params layer (<c>StimParamsLayer</c>) over a core WSS implementation.
-/// Extends the basic interface with per-finger calibration parameters, normalized drive, and JSON persistence.
-/// All public stimulation APIs accept a finger string and map to a channel via <see cref="FingerToChannel"/>.
+/// Provides a Unity-facing API for WSS stimulation using the core + params layer.
 /// </summary>
+/// <remarks>
+/// This component composes <c>WssStimulationCore</c> -> <c>StimParamsLayer</c> and exposes
+/// convenience methods that accept finger aliases (e.g., "index" or "ch2").
+/// 
+/// Lifecycle: the device is initialized in <see cref="OnEnable"/>, ticked in <see cref="Update"/>,
+/// and shut down in <see cref="OnDisable"/>.
+/// </remarks>
 public class StimulationParams : MonoBehaviour
 {
     #region ==== Serialized Fields ====
@@ -37,7 +42,12 @@ public class StimulationParams : MonoBehaviour
 
     private IStimParamsCore WSS;
     private IBasicStimulation basicWSS;
-    /// <summary>True after <see cref="StartStimulation"/> succeeds.</summary>
+    /// <summary>
+    /// Gets or sets a user-managed flag indicating whether stimulation is considered started.
+    /// </summary>
+    /// <remarks>
+    /// This wrapper does not update this field; use <see cref="Started"/> to query device state.
+    /// </remarks>
     public bool started = false;
     /// <summary>True if the underlying core exposes basic-stimulation APIs.</summary>
     private bool basicSupported = false;
@@ -104,8 +114,7 @@ public class StimulationParams : MonoBehaviour
     #region ==== Stimulation methods: basic and core ====
 
     /// <summary>
-    /// Direct analog stimulation using raw parameters.
-    /// Prefer <see cref="StimulateNormalized(string,float)"/> for analog sensors.
+    /// Sends a direct analog stimulation command using raw parameters.
     /// </summary>
     /// <param name="finger">Finger name or channel alias (e.g., "index" or "ch2").</param>
     /// <param name="PW">Pulse width in microseconds.</param>
@@ -142,6 +151,7 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
     public void load(int targetWSS)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -180,6 +190,7 @@ public class StimulationParams : MonoBehaviour
     /// Updates the waveform parameters for a specific event on a target unit.
     /// </summary>
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
     public void updateWaveform(int targetWSS, int[] waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -188,8 +199,10 @@ public class StimulationParams : MonoBehaviour
 
     /// <summary>
     /// Selects a predefined or custom waveform shape from device memory.
-    /// Slots 0â€“10 are predefined. Slots 11â€“13 are custom.
     /// </summary>
+    /// <remarks>
+    /// Slots 0-10 are predefined. Slots 11-13 are custom.
+    /// </remarks>
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
     public void updateWaveform(int cathodicWaveform, int anodicWaveform, int eventID)
     {
@@ -198,9 +211,10 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <summary>
-    /// Shape selection on a target unit.
+    /// Selects a predefined or custom waveform shape for a target unit.
     /// </summary>
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
     public void updateWaveform(int targetWSS, int cathodicWaveform, int anodicWaveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -272,7 +286,7 @@ public class StimulationParams : MonoBehaviour
     #region ==== Stimulation methods: params layer (finger APIs) ====
 
     /// <summary>
-    /// Normalized drive [0..1]. Computes PW via per-finger min/max and stimulates.
+    /// Stimulates using a normalized drive value in the range [0, 1].
     /// </summary>
     /// <param name="finger">Finger label or alias (e.g., "index", "ring", "ch2").</param>
     /// <param name="value01">Normalized drive in [0,1]. Values are clamped.</param>
@@ -283,8 +297,9 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <summary>
-    /// Returns the last computed intensity for a finger. For PW-driven systems this is PW (Âµs).
+    /// Gets the last computed stimulation intensity for a finger.
     /// </summary>
+    /// <remarks>For PW-driven systems this value is pulse width in microseconds.</remarks>
     /// <param name="finger">Finger label or alias.</param>
     public int GetLastPulseWidth(string finger)
     {
@@ -300,7 +315,7 @@ public class StimulationParams : MonoBehaviour
         WSS.SetChannelAmp(ch, mA);
     }
 
-    /// <summary>Sets per-finger minimum PW in Âµs.</summary>
+    /// <summary>Sets per-finger minimum pulse width in microseconds.</summary>
     /// <inheritdoc cref="IStimParamsCore.SetChannelPWMin(int,int)"/>
     public void SetChannelPWMin(string finger, int us)
     {
@@ -308,7 +323,7 @@ public class StimulationParams : MonoBehaviour
         WSS.SetChannelPWMin(ch, us);
     }
 
-    /// <summary>Sets per-finger maximum PW in Âµs.</summary>
+    /// <summary>Sets per-finger maximum pulse width in microseconds.</summary>
     /// <inheritdoc cref="IStimParamsCore.SetChannelPWMax(int,int)"/>
     public void SetChannelPWMax(string finger, int us)
     {
@@ -332,7 +347,7 @@ public class StimulationParams : MonoBehaviour
         return WSS.GetChannelAmp(ch);
     }
 
-    /// <summary>Gets per-finger minimum PW in Âµs.</summary>
+    /// <summary>Gets per-finger minimum pulse width in microseconds.</summary>
     /// <inheritdoc cref="IStimParamsCore.GetChannelPWMin(int)"/>
     public int GetChannelPWMin(string finger)
     {
@@ -340,7 +355,7 @@ public class StimulationParams : MonoBehaviour
         return WSS.GetChannelPWMin(ch);
     }
 
-    /// <summary>Gets per-finger maximum PW in Âµs.</summary>
+    /// <summary>Gets per-finger maximum pulse width in microseconds.</summary>
     /// <inheritdoc cref="IStimParamsCore.GetChannelPWMax(int)"/>
     public int GetChannelPWMax(string finger)
     {
@@ -368,7 +383,7 @@ public class StimulationParams : MonoBehaviour
     #region ==== Params JSON and calibration ====
 
     /// <summary>Saves current params JSON to disk.</summary>
-    /// <inheritdoc cref="IStimParamsCore.SaveParamsJson"/>
+    /// <inheritdoc cref="IStimParamsCore.SaveParamsJson()"/>
     public void SaveParamsJson() => WSS.SaveParamsJson();
 
     /// <summary>Loads params JSON from default location.</summary>
@@ -391,19 +406,19 @@ public class StimulationParams : MonoBehaviour
     public float GetStimParam(string key) => WSS.GetStimParam(key);
 
     /// <summary>Tries to read a parameter by dotted key.</summary>
-    /// <inheritdoc cref="WSSInterfacing.IStimParamsCore.TryGetStimParam(string, out float)"/>
+    /// <inheritdoc cref="IStimParamsCore.TryGetStimParam(string, out float)"/>
     public bool TryGetStimParam(string key, out float v) => WSS.TryGetStimParam(key, out v);
 
     /// <summary>Returns a copy of all current params as dotted-key map.</summary>
-    /// <inheritdoc cref="IStimParamsCore.GetAllStimParams"/>
+    /// <inheritdoc cref="IStimParamsCore.GetAllStimParams()"/>
     public Dictionary<string, float> GetAllStimParams() => WSS.GetAllStimParams();
 
     /// <summary>
     /// Updates per-finger calibration params.
     /// </summary>
     /// <param name="finger">e.g., "index", "ring", or "ch2".</param>
-    /// <param name="max">Max PW (Âµs).</param>
-    /// <param name="min">Min PW (Âµs).</param>
+    /// <param name="max">Maximum pulse width in microseconds.</param>
+    /// <param name="min">Minimum pulse width in microseconds.</param>
     /// <param name="amp">Amplitude (mA).</param>
     /// <exception cref="ArgumentOutOfRangeException">If finger maps to an invalid channel.</exception>
     public void UpdateChannelParams(string finger, int max, int min, int amp)
@@ -422,10 +437,10 @@ public class StimulationParams : MonoBehaviour
 
     #region ==== Getters ====
 
-    /// <inheritdoc cref="IStimulationCore.Ready"/>
+    /// <inheritdoc cref="IStimulationCore.Ready()"/>
     public bool Ready() => WSS.Ready();
 
-    /// <inheritdoc cref="IStimulationCore.Started"/>
+    /// <inheritdoc cref="IStimulationCore.Started()"/>
     public bool Started() => WSS.Started();
 
     /// <summary>Provides access to the core configuration controller.</summary>

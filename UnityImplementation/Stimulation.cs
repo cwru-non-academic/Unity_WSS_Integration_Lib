@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using System;
 using Wss.CoreModule;
@@ -6,11 +6,15 @@ using Wss.CalibrationModule;
 using Wss.ModelModule;
 
 /// <summary>
-/// High-level Unity wrapper for the full stimulation model layer.
-/// Extends <c>StimParamsLayer</c> with proportional and derivative control modes,
-/// calibration constants, and model-based drive computation.
-/// This is the top-level interface that user code should normally interact with.
+/// Provides a Unity-facing API for WSS stimulation using the full params + model stack.
 /// </summary>
+/// <remarks>
+/// This component composes <c>WssStimulationCore</c> -> <c>StimParamsLayer</c> -> <c>ModelParamsLayer</c>
+/// and exposes convenience methods that accept finger aliases (e.g., "index" or "ch2").
+/// 
+/// Lifecycle: the device is initialized in <see cref="OnEnable"/>, ticked in <see cref="Update"/>,
+/// and shut down in <see cref="OnDisable"/>.
+/// </remarks>
 public class Stimulation : MonoBehaviour
 {
     #region ==== Serialized Fields ====
@@ -39,7 +43,12 @@ public class Stimulation : MonoBehaviour
 
     private IModelParamsCore WSS;
     private IBasicStimulation basicWSS;
-    /// <summary>True after <see cref="StartStimulation"/> succeeds.</summary>
+    /// <summary>
+    /// Gets or sets a user-managed flag indicating whether stimulation is considered started.
+    /// </summary>
+    /// <remarks>
+    /// This wrapper does not update this field; use <see cref="Started"/> to query device state.
+    /// </remarks>
     public bool started = false;
     /// <summary>True if the underlying core exposes basic-stimulation APIs.</summary>
     private bool basicSupported = false;
@@ -47,7 +56,7 @@ public class Stimulation : MonoBehaviour
     #region ==== Unity Lifecycle ====
 
     /// <summary>
-    /// Creates the full stimulation stack: core → params layer → model layer.
+    /// Creates the full stimulation stack: core -> params layer -> model layer.
     /// Detects hardware if <see cref="forcePort"/> is false.
     /// </summary>
     public void Awake()
@@ -99,8 +108,7 @@ public class Stimulation : MonoBehaviour
     #region ==== Stimulation methods: basic and core ====
 
     /// <summary>
-    /// Direct analog stimulation using raw parameters.
-    /// Recommended only for discrete-sensor triggers.
+    /// Sends a direct analog stimulation command using raw parameters.
     /// </summary>
     /// <param name="finger">Finger label or alias (e.g., "index" or "ch2").</param>
     /// <param name="PW">Pulse width in microseconds.</param>
@@ -121,6 +129,8 @@ public class Stimulation : MonoBehaviour
     public void StopStimulation() => WSS.StopStim(WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void Save(int targetWSS)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -128,7 +138,9 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>
+    /// Broadcasts to all connected WSS units. No-op (logs an error) if basic stimulation is not supported.
+    /// </remarks>
     public void Save()
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -136,6 +148,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void load(int targetWSS)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -143,7 +157,9 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>
+    /// Broadcasts to all connected WSS units. No-op (logs an error) if basic stimulation is not supported.
+    /// </remarks>
     public void load()
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -151,6 +167,10 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Request_Configs(int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <param name="command">Configuration block selector.</param>
+    /// <param name="id">Optional block id.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void request_Configs(int targetWSS, int command, int id)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -158,7 +178,9 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>
+    /// Broadcasts to all connected WSS units. No-op (logs an error) if basic stimulation is not supported.
+    /// </remarks>
     public void updateWaveform(int[] waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -166,6 +188,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void updateWaveform(int targetWSS, int[] waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -173,6 +197,7 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void updateWaveform(int cathodicWaveform, int anodicWaveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -182,6 +207,11 @@ public class Stimulation : MonoBehaviour
     /// <summary>
     /// Selects predefined or custom waveform shapes for a specific WSS target.
     /// </summary>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <param name="cathodicWaveform">Cathodic waveform slot index.</param>
+    /// <param name="anodicWaveform">Anodic waveform slot index.</param>
+    /// <param name="eventID">Target event slot.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void updateWaveform(int targetWSS, int cathodicWaveform, int anodicWaveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -189,21 +219,28 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(WaveformBuilder,int,WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>
+    /// Broadcasts to all connected WSS units. No-op (logs an error) if basic stimulation is not supported.
+    /// </remarks>
     public void updateWaveform(WaveformBuilder waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
         basicWSS.UpdateWaveform(waveform, eventID, WssTarget.Broadcast);
     }
 
-    /// <summary>Loads a waveform definition from JSON for a target unit.</summary>
+    /// <summary>Updates a waveform using a JSON-loaded builder definition for a target unit.</summary>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void updateWaveform(int targetWSS, WaveformBuilder waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
         basicWSS.UpdateWaveform(waveform, eventID, IntToWssTarget(targetWSS));
     }
 
-    /// <summary>Loads a waveform file into memory.</summary>
+    /// <summary>Loads a waveform definition from a file into the specified event slot.</summary>
+    /// <param name="fileName">Waveform file name or path understood by the underlying core.</param>
+    /// <param name="eventID">Target event slot.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void loadWaveform(string fileName, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -211,6 +248,7 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Defines a custom waveform for an event slot on all units.</summary>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void WaveformSetup(WaveformBuilder wave, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -218,6 +256,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Defines a custom waveform for an event slot on a specific unit.</summary>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void WaveformSetup(int targetWSS, WaveformBuilder wave, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -225,7 +265,9 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateIPD(int,int,WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>
+    /// Broadcasts to all connected WSS units. No-op (logs an error) if basic stimulation is not supported.
+    /// </remarks>
     public void UpdateIPD(int ipd, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -233,6 +275,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateIPD(int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void UpdateIPD(int targetWSS, int ipd, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported."); return; }
@@ -244,15 +288,18 @@ public class Stimulation : MonoBehaviour
     #region ==== Stimulation methods: params and model layers ====
 
     /// <summary>
-    /// Normalized drive [0..1]. Computes PW via per-finger calibration and model constants, then stimulates.
+    /// Stimulates using a normalized drive value in the range [0, 1].
     /// </summary>
+    /// <param name="finger">Finger label or alias.</param>
+    /// <param name="magnitude">Normalized drive in [0, 1].</param>
     public void StimulateNormalized(string finger, float magnitude)
     {
         int ch = FingerToChannel(finger);
         WSS.StimulateNormalized(ch, magnitude);
     }
 
-    /// <summary>Returns last computed pulse width for the specified finger.</summary>
+    /// <summary>Gets the last computed stimulation intensity for a finger.</summary>
+    /// <remarks>For PW-driven systems this value is pulse width in microseconds.</remarks>
     public int GetStimIntensity(string finger)
     {
         int ch = FingerToChannel(finger);
@@ -344,10 +391,10 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>
-    /// Applies model-driven stimulation using proportional or PD mode.
+    /// Applies model-driven stimulation using the currently configured control mode.
     /// </summary>
     /// <param name="finger">Finger label or alias.</param>
-    /// <param name="magnitude">Normalized or physical magnitude input to the model.</param>
+    /// <param name="magnitude">Normalized or physical magnitude input expected by the current mode.</param>
     public void StimWithMode(string finger, float magnitude)
     {
         int ch = FingerToChannel(finger);
@@ -355,8 +402,13 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>
-    /// Updates calibration parameters for a specific finger.
+    /// Updates per-finger calibration parameters used by the params/model layers.
     /// </summary>
+    /// <param name="finger">Finger label or alias.</param>
+    /// <param name="max">Maximum pulse width in microseconds.</param>
+    /// <param name="min">Minimum pulse width in microseconds.</param>
+    /// <param name="amp">Amplitude in milliamps.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="finger"/> maps to an invalid channel.</exception>
     public void UpdateChannelParams(string finger, int max, int min, int amp)
     {
         int ch = FingerToChannel(finger);

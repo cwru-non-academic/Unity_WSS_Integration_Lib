@@ -3,10 +3,15 @@ using UnityEngine;
 using Wss.CoreModule;
 
 /// <summary>
-/// Basic Unity MonoBehaviour wrapper for the WSS stimulation core.
-/// Handles initialization, configuration, and waveform control for connected WSS stimulators.
-/// Designed as the simplest interface layer exposing low-level stimulation functionality.
+/// Provides a Unity-facing API for the basic WSS stimulation core.
 /// </summary>
+/// <remarks>
+/// This component wraps <c>WssStimulationCore</c> and forwards calls to <see cref="IStimulationCore"/>
+/// and <see cref="IBasicStimulation"/>.
+/// 
+/// Lifecycle: the device is initialized in <see cref="OnEnable"/>, ticked in <see cref="Update"/>,
+/// and shut down in <see cref="OnDisable"/>.
+/// </remarks>
 public class Stimulationbasic : MonoBehaviour
 {
     #region ==== Serialized Fields ====
@@ -35,6 +40,13 @@ public class Stimulationbasic : MonoBehaviour
 
     private IStimulationCore WSS;
     private IBasicStimulation basicWSS;
+
+    /// <summary>
+    /// Gets or sets a user-managed flag indicating whether stimulation is considered started.
+    /// </summary>
+    /// <remarks>
+    /// This wrapper does not update this field; use <see cref="Started"/> to query device state.
+    /// </remarks>
     public bool started = false;
 
     #region ==== Unity Lifecycle ====
@@ -118,6 +130,7 @@ public class Stimulationbasic : MonoBehaviour
     public void StopStimulation() => WSS.StopStim(WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void Save(int targetWSS) => basicWSS.Save(IntToWssTarget(targetWSS));
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
@@ -125,6 +138,7 @@ public class Stimulationbasic : MonoBehaviour
     public void Save() => basicWSS.Save(WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void load(int targetWSS) => basicWSS.Load(IntToWssTarget(targetWSS));
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
@@ -132,6 +146,9 @@ public class Stimulationbasic : MonoBehaviour
     public void load() => basicWSS.Load(WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.Request_Configs(int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <param name="command">Configuration block selector.</param>
+    /// <param name="id">Optional block id.</param>
     public void request_Configs(int targetWSS, int command, int id)
         => basicWSS.Request_Configs(command, id, IntToWssTarget(targetWSS));
 
@@ -140,6 +157,8 @@ public class Stimulationbasic : MonoBehaviour
     public void updateWaveform(int[] waveform, int eventID)
         => basicWSS.UpdateWaveform(waveform, eventID, WssTarget.Broadcast);
 
+    /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void updateWaveform(int targetWSS, int[] waveform, int eventID)
         => basicWSS.UpdateWaveform(waveform, eventID, IntToWssTarget(targetWSS));
 
@@ -147,6 +166,8 @@ public class Stimulationbasic : MonoBehaviour
     public void updateWaveform(int cathodicWaveform, int anodicWaveform, int eventID)
         => basicWSS.UpdateEventShape(cathodicWaveform, anodicWaveform, eventID, WssTarget.Broadcast);
 
+    /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void updateWaveform(int targetWSS, int cathodicWaveform, int anodicWaveform, int eventID)
         => basicWSS.UpdateEventShape(cathodicWaveform, anodicWaveform, eventID, IntToWssTarget(targetWSS));
 
@@ -155,6 +176,8 @@ public class Stimulationbasic : MonoBehaviour
     public void updateWaveform(WaveformBuilder waveform, int eventID)
         => basicWSS.UpdateWaveform(waveform, eventID, WssTarget.Broadcast);
 
+    /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(WaveformBuilder,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void updateWaveform(int targetWSS, WaveformBuilder waveform, int eventID)
         => basicWSS.UpdateWaveform(waveform, eventID, IntToWssTarget(targetWSS));
 
@@ -167,6 +190,8 @@ public class Stimulationbasic : MonoBehaviour
     public void WaveformSetup(WaveformBuilder wave, int eventID)
         => basicWSS.WaveformSetup(wave, eventID, WssTarget.Broadcast);
 
+    /// <inheritdoc cref="IBasicStimulation.WaveformSetup(WaveformBuilder,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void WaveformSetup(int targetWSS, WaveformBuilder wave, int eventID)
         => basicWSS.WaveformSetup(wave, eventID, IntToWssTarget(targetWSS));
 
@@ -176,6 +201,7 @@ public class Stimulationbasic : MonoBehaviour
         => basicWSS.UpdateIPD(ipd, eventID, WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.UpdateIPD(int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     public void UpdateIPD(int targetWSS, int ipd, int eventID)
         => basicWSS.UpdateIPD(ipd, eventID, IntToWssTarget(targetWSS));
 

@@ -35,7 +35,7 @@ public class Stimulation : MonoBehaviour
     [SerializeField] private int maxSetupTries = 5;
 
     /// <summary>
-    /// Target COM port to use when <see cref="forcePort"/> is enabled.
+    /// Target COM port to use when <c>forcePort</c> is enabled.
     /// </summary>
     [SerializeField] public string comPort = "COM7";
 
@@ -47,7 +47,7 @@ public class Stimulation : MonoBehaviour
     /// Gets or sets a user-managed flag indicating whether stimulation is considered started.
     /// </summary>
     /// <remarks>
-    /// This wrapper does not update this field; use <see cref="Started"/> to query device state.
+    /// This wrapper does not update this field; use <c>Started()</c> to query device state.
     /// </remarks>
     public bool started = false;
     /// <summary>True if the underlying core exposes basic-stimulation APIs.</summary>
@@ -57,7 +57,7 @@ public class Stimulation : MonoBehaviour
 
     /// <summary>
     /// Creates the full stimulation stack: core -> params layer -> model layer.
-    /// Detects hardware if <see cref="forcePort"/> is false.
+    /// Detects hardware if <c>forcePort</c> is false.
     /// </summary>
     public void Awake()
     {

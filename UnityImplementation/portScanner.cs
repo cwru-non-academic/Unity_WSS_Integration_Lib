@@ -7,7 +7,7 @@ using UnityEngine;
 /// <summary>
 /// Simple Unity helper that scans available serial ports and allows selecting
 /// one from a UI dropdown to force the COM port used by the stimulation script.
-/// Attach this to a separate GameObject and wire the <see cref="selectPort"/>
+/// Attach this to a separate GameObject and wire the <c>selectPort()</c>
 /// method to a UI event (e.g., button click) to apply the chosen port.
 /// </summary>
 /// <remarks>

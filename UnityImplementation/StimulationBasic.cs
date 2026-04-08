@@ -52,15 +52,19 @@ public class Stimulationbasic : MonoBehaviour
     #region ==== Unity Lifecycle ====
 
     /// <summary>
-    /// Creates and configures the stimulation core controller.
-    /// Uses either a forced COM port or default auto-detected connection.
+    /// Creates the transport and configures the stimulation core controller.
+    /// Uses test mode, a forced COM port, or default auto-detected connection.
     /// </summary>
     public void Awake()
     {
-        if (forcePort)
-            WSS = new WssStimulationCore(comPort, Application.streamingAssetsPath, testMode, maxSetupTries);
-        else
-            WSS = new WssStimulationCore(Application.streamingAssetsPath, testMode, maxSetupTries);
+        ITransport transport =
+            testMode
+            ? new TestModeTransport()
+            : forcePort
+                ? new SerialPortTransport(comPort)
+                : new SerialPortTransport();
+
+        WSS = new WssStimulationCore(transport, Application.streamingAssetsPath, maxSetupTries);
 
         basicWSS = (IBasicStimulation)WSS;
     }

@@ -56,15 +56,19 @@ public class Stimulation : MonoBehaviour
     #region ==== Unity Lifecycle ====
 
     /// <summary>
-    /// Creates the full stimulation stack: core -> params layer -> model layer.
+    /// Creates the transport, then the full stimulation stack: core -> params layer -> model layer.
     /// Detects hardware if <c>forcePort</c> is false.
     /// </summary>
     public void Awake()
     {
-        IStimulationCore WSScore =
-            forcePort
-            ? new WssStimulationCore(comPort, Application.streamingAssetsPath, testMode, maxSetupTries)
-            : new WssStimulationCore(Application.streamingAssetsPath, testMode, maxSetupTries);
+        ITransport transport =
+            testMode
+            ? new TestModeTransport()
+            : forcePort
+                ? new SerialPortTransport(comPort)
+                : new SerialPortTransport();
+
+        IStimulationCore WSScore = new WssStimulationCore(transport, Application.streamingAssetsPath, maxSetupTries);
 
         IStimParamsCore paramsWSS = new StimParamsLayer(WSScore, Application.streamingAssetsPath);
         WSS = new ModelParamsLayer(paramsWSS, Application.streamingAssetsPath);

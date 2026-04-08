@@ -55,15 +55,19 @@ public class StimulationParams : MonoBehaviour
     #region ==== Unity Lifecycle ====
 
     /// <summary>
-    /// Builds the core WSS and wraps it with <c>StimParamsLayer</c>.
+    /// Builds the transport and core WSS, then wraps it with <c>StimParamsLayer</c>.
     /// Tries to expose <see cref="IBasicStimulation"/> if available.
     /// </summary>
     public void Awake()
     {
-        IStimulationCore WSScore =
-            forcePort
-            ? new WssStimulationCore(comPort, Application.streamingAssetsPath, testMode, maxSetupTries)
-            : new WssStimulationCore(Application.streamingAssetsPath, testMode, maxSetupTries);
+        ITransport transport =
+            testMode
+            ? new TestModeTransport()
+            : forcePort
+                ? new SerialPortTransport(comPort)
+                : new SerialPortTransport();
+
+        IStimulationCore WSScore = new WssStimulationCore(transport, Application.streamingAssetsPath, maxSetupTries);
 
         WSS = new StimParamsLayer(WSScore, Application.streamingAssetsPath);
         WSS.TryGetBasic(out basicWSS);

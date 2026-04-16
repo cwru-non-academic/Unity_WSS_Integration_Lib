@@ -3,6 +3,9 @@ C# class that has all the methods to communicate with the WSS and software speci
 
 All documentation about the API and other implementations can be found in [GitHub Pages](https://cwru-non-academic.github.io/WSS_Documentation/).
 
+## Unity Requirements
+Change NET framework 2.1 to NET Framework within Project settings > player > other settings > config.
+
 ## How to add a submodule to exiting project
 1. Close other software using the code solution (Unity, Visual Studio, etc)
 2. If using git desktop, open the command prompt by going to `Repository>Open in Command Prompt`

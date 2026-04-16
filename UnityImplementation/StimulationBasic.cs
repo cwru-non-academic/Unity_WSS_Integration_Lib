@@ -59,12 +59,18 @@ public class Stimulationbasic : MonoBehaviour
     {
         ITransport transport =
             testMode
-            ? new TestModeTransport()
+            ? new TestModeTransport(new TestModeTransportOptions())
             : forcePort
-                ? new SerialPortTransport(comPort)
-                : new SerialPortTransport();
+                ? new SerialPortTransport(new SerialPortTransportOptions { PortName = comPort })
+                : new SerialPortTransport(new SerialPortTransportOptions { AutoSelectPort = true });
 
-        WSS = new WssStimulationCore(transport, Application.streamingAssetsPath, maxSetupTries);
+        WSS = new WssStimulationCore(
+            transport,
+            new WssStimulationCoreOptions
+            {
+                ConfigPath = Application.streamingAssetsPath,
+                MaxSetupTries = maxSetupTries,
+            });
 
         basicWSS = (IBasicStimulation)WSS;
     }

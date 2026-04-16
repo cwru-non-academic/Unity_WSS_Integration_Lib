@@ -62,12 +62,18 @@ public class StimulationParams : MonoBehaviour
     {
         ITransport transport =
             testMode
-            ? new TestModeTransport()
+            ? new TestModeTransport(new TestModeTransportOptions())
             : forcePort
-                ? new SerialPortTransport(comPort)
-                : new SerialPortTransport();
+                ? new SerialPortTransport(new SerialPortTransportOptions { PortName = comPort })
+                : new SerialPortTransport(new SerialPortTransportOptions { AutoSelectPort = true });
 
-        IStimulationCore WSScore = new WssStimulationCore(transport, Application.streamingAssetsPath, maxSetupTries);
+        IStimulationCore WSScore = new WssStimulationCore(
+            transport,
+            new WssStimulationCoreOptions
+            {
+                ConfigPath = Application.streamingAssetsPath,
+                MaxSetupTries = maxSetupTries,
+            });
 
         WSS = new StimParamsLayer(WSScore, Application.streamingAssetsPath);
         WSS.TryGetBasic(out basicWSS);

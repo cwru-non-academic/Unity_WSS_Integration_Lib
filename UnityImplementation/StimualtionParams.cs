@@ -13,6 +13,9 @@ using Wss.CalibrationModule;
 /// 
 /// Lifecycle: the device is initialized in <see cref="OnEnable"/>, ticked in <see cref="Update"/>,
 /// and shut down in <see cref="OnDisable"/>.
+///
+/// When <see cref="forcePort"/> is <c>false</c>, the wrapper auto-selects a serial port. When
+/// <see cref="testMode"/> is <c>true</c>, it uses an in-memory test transport instead of hardware.
 /// </remarks>
 public class StimulationParams : MonoBehaviour
 {
@@ -58,6 +61,7 @@ public class StimulationParams : MonoBehaviour
     /// Builds the transport and core WSS, then wraps it with <c>StimParamsLayer</c>.
     /// Tries to expose <see cref="IBasicStimulation"/> if available.
     /// </summary>
+    /// <remarks>Uses <see cref="Application.streamingAssetsPath"/> as the configuration root.</remarks>
     public void Awake()
     {
         ITransport transport =
@@ -146,6 +150,7 @@ public class StimulationParams : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void Save(int targetWSS)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -153,7 +158,7 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>Broadcasts to all connected WSS units. No-op and logs an error when basic stimulation is unavailable.</remarks>
     public void Save()
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -162,6 +167,7 @@ public class StimulationParams : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void load(int targetWSS)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -169,7 +175,7 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>Broadcasts to all connected WSS units. No-op and logs an error when basic stimulation is unavailable.</remarks>
     public void load()
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -180,6 +186,7 @@ public class StimulationParams : MonoBehaviour
     /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
     /// <param name="command">Configuration block selector.</param>
     /// <param name="id">Optional block id.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void request_Configs(int targetWSS, int command, int id)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -187,7 +194,7 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>Broadcasts to all connected WSS units. No-op and logs an error when basic stimulation is unavailable.</remarks>
     /// <param name="waveform">Serialized device waveform.</param>
     /// <param name="eventID">Target event slot.</param>
     public void updateWaveform(int[] waveform, int eventID)
@@ -201,6 +208,7 @@ public class StimulationParams : MonoBehaviour
     /// </summary>
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void updateWaveform(int targetWSS, int[] waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -210,10 +218,11 @@ public class StimulationParams : MonoBehaviour
     /// <summary>
     /// Selects a predefined or custom waveform shape from device memory.
     /// </summary>
-    /// <remarks>
-    /// Slots 0-10 are predefined. Slots 11-13 are custom.
-    /// </remarks>
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
+    /// <remarks>
+    /// Slots 0-10 are predefined. Slots 11-13 are custom. No-op and logs an error when basic
+    /// stimulation is unavailable from the wrapped core.
+    /// </remarks>
     public void updateWaveform(int cathodicWaveform, int anodicWaveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -225,6 +234,7 @@ public class StimulationParams : MonoBehaviour
     /// </summary>
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void updateWaveform(int targetWSS, int cathodicWaveform, int anodicWaveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -235,7 +245,7 @@ public class StimulationParams : MonoBehaviour
     /// Updates waveform using JSON-loaded builder definition for all units.
     /// </summary>
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(WaveformBuilder,int,WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>Broadcasts to all connected WSS units. No-op and logs an error when basic stimulation is unavailable.</remarks>
     public void updateWaveform(WaveformBuilder waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -246,6 +256,10 @@ public class StimulationParams : MonoBehaviour
     /// Updates waveform using JSON-loaded builder definition for a target unit.
     /// </summary>
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(WaveformBuilder,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <param name="waveform">Waveform builder definition to serialize and send.</param>
+    /// <param name="eventID">Target event slot.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void updateWaveform(int targetWSS, WaveformBuilder waveform, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -254,6 +268,7 @@ public class StimulationParams : MonoBehaviour
 
     /// <summary>Loads a waveform definition from external file.</summary>
     /// <inheritdoc cref="IBasicStimulation.LoadWaveform(string,int)"/>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void loadWaveform(string fileName, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -262,6 +277,7 @@ public class StimulationParams : MonoBehaviour
 
     /// <summary>Defines a custom waveform for the specified event slot on all units.</summary>
     /// <inheritdoc cref="IBasicStimulation.WaveformSetup(WaveformBuilder,int,WssTarget)"/>
+    /// <remarks>Broadcasts to all connected WSS units. No-op and logs an error when basic stimulation is unavailable.</remarks>
     public void WaveformSetup(WaveformBuilder wave, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -270,6 +286,10 @@ public class StimulationParams : MonoBehaviour
 
     /// <summary>Defines a custom waveform for the specified event slot on a target unit.</summary>
     /// <inheritdoc cref="IBasicStimulation.WaveformSetup(WaveformBuilder,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <param name="wave">Waveform builder definition to store on the device.</param>
+    /// <param name="eventID">Target event slot.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void WaveformSetup(int targetWSS, WaveformBuilder wave, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -277,7 +297,7 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateIPD(int,int,WssTarget)"/>
-    /// <remarks>Broadcasts to all connected WSS units.</remarks>
+    /// <remarks>Broadcasts to all connected WSS units. No-op and logs an error when basic stimulation is unavailable.</remarks>
     public void UpdateIPD(int ipd, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -285,6 +305,10 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <inheritdoc cref="IBasicStimulation.UpdateIPD(int,int,WssTarget)"/>
+    /// <param name="targetWSS">0=broadcast, 1..3=unit index.</param>
+    /// <param name="ipd">Inter-phase delay value forwarded to the basic API.</param>
+    /// <param name="eventID">Target event slot.</param>
+    /// <remarks>No-op and logs an error when basic stimulation is unavailable from the wrapped core.</remarks>
     public void UpdateIPD(int targetWSS, int ipd, int eventID)
     {
         if (!basicSupported) { Log.Error("Basic stimulation not supported on this Stimulator."); return; }
@@ -300,6 +324,7 @@ public class StimulationParams : MonoBehaviour
     /// </summary>
     /// <param name="finger">Finger label or alias (e.g., "index", "ring", "ch2").</param>
     /// <param name="value01">Normalized drive in [0,1]. Values are clamped.</param>
+    /// <remarks>Finger aliases are translated to numeric channels before forwarding to the params layer.</remarks>
     public void StimulateNormalized(string finger, float value01)
     {
         int ch = FingerToChannel(finger);
@@ -311,6 +336,7 @@ public class StimulationParams : MonoBehaviour
     /// </summary>
     /// <remarks>For PW-driven systems this value is pulse width in microseconds.</remarks>
     /// <param name="finger">Finger label or alias.</param>
+    /// <returns>The last intensity value produced for the resolved channel.</returns>
     public int GetLastPulseWidth(string finger)
     {
         int ch = FingerToChannel(finger);
@@ -382,6 +408,8 @@ public class StimulationParams : MonoBehaviour
     }
 
     /// <summary>Returns true if the finger maps to a valid channel for the current configuration.</summary>
+    /// <param name="finger">Finger label or alias.</param>
+    /// <returns><c>true</c> when the resolved channel is within the current configuration range.</returns>
     public bool IsFingerValid(string finger)
     {
         int ch = FingerToChannel(finger);
@@ -431,6 +459,7 @@ public class StimulationParams : MonoBehaviour
     /// <param name="min">Minimum pulse width in microseconds.</param>
     /// <param name="amp">Amplitude (mA).</param>
     /// <exception cref="ArgumentOutOfRangeException">If finger maps to an invalid channel.</exception>
+    /// <remarks>Updates the backing dotted-key parameter entries used by the params layer.</remarks>
     public void UpdateChannelParams(string finger, int max, int min, int amp)
     {
         int ch = FingerToChannel(finger);
@@ -454,6 +483,7 @@ public class StimulationParams : MonoBehaviour
     public bool Started() => WSS.Started();
 
     /// <summary>Provides access to the core configuration controller.</summary>
+    /// <returns>The current core configuration controller owned by the wrapper.</returns>
     public CoreConfigController GetCoreConfigCTRL() => WSS.GetCoreConfigController();
 
     #endregion

@@ -15,6 +15,9 @@ using UnityEngine;
 /// - Place this script on a separate GameObject (not a child of the stimulation object).
 /// - Assign <see cref="stim"/> and <see cref="serialList"/> in the inspector.
 /// - Ensure the stimulation script has <c>forcePort</c> enabled so the dropdown selection is used.
+///
+/// Enabling this component temporarily disables <see cref="stim"/> while scanning ports so the
+/// stimulation wrapper does not hold an outdated connection open during selection.
 /// </remarks>
 public class portScanner : MonoBehaviour
 {
@@ -91,6 +94,10 @@ public class portScanner : MonoBehaviour
     /// <summary>
     /// Applies the selected COM port to the stimulation script and re-enables it.
     /// </summary>
+    /// <remarks>
+    /// If the dropdown contains only the <c>empty</c> placeholder, this method leaves the stimulation
+    /// component disabled and does not change its configured port.
+    /// </remarks>
     public void selectPort()
     {
         selectedPort = serialList.options[serialList.value].text;

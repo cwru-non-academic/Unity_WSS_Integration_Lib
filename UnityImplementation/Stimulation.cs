@@ -14,6 +14,9 @@ using Wss.ModelModule;
 /// 
 /// Lifecycle: the device is initialized in <see cref="OnEnable"/>, ticked in <see cref="Update"/>,
 /// and shut down in <see cref="OnDisable"/>.
+///
+/// When <see cref="forcePort"/> is <c>false</c>, the wrapper auto-selects a serial port. When
+/// <see cref="testMode"/> is <c>true</c>, it uses an in-memory test transport instead of hardware.
 /// </remarks>
 public class Stimulation : MonoBehaviour
 {
@@ -59,6 +62,10 @@ public class Stimulation : MonoBehaviour
     /// Creates the transport, then the full stimulation stack: core -> params layer -> model layer.
     /// Detects hardware if <c>forcePort</c> is false.
     /// </summary>
+    /// <remarks>
+    /// Uses <see cref="Application.streamingAssetsPath"/> as the configuration root for the core,
+    /// params, and model layers.
+    /// </remarks>
     public void Awake()
     {
         ITransport transport =
@@ -83,6 +90,7 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Initializes the WSS device connection when the component becomes active.</summary>
+    /// <remarks>Unity invokes this after <see cref="Awake"/> has constructed the wrapper stack.</remarks>
     void OnEnable() => WSS.Initialize();
 
     /// <summary>
@@ -97,6 +105,7 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Ensures clean shutdown when the component is disabled.</summary>
+    /// <remarks>Stops communication and releases transport resources owned by the underlying stack.</remarks>
     void OnDisable() => WSS.Shutdown();
 
     #endregion
@@ -104,9 +113,11 @@ public class Stimulation : MonoBehaviour
     #region ==== Connection Management ====
 
     /// <summary>Explicitly closes the radio connection.</summary>
+    /// <remarks>Equivalent to invoking the wrapper shutdown path without disabling the GameObject.</remarks>
     public void releaseRadio() => WSS.Shutdown();
 
     /// <summary>Resets the radio by shutting down and reinitializing the device.</summary>
+    /// <remarks>Any active stimulation session is interrupted while the connection is restarted.</remarks>
     public void resetRadio()
     {
         WSS.Shutdown();
@@ -124,6 +135,7 @@ public class Stimulation : MonoBehaviour
     /// <param name="PW">Pulse width in microseconds.</param>
     /// <param name="amp">Amplitude in milliamps (default = 3).</param>
     /// <param name="IPI">Inter-pulse interval in milliseconds (default = 10).</param>
+    /// <remarks>Finger aliases are translated to numeric channels before forwarding to the core.</remarks>
     public void StimulateAnalog(string finger, int PW, int amp = 3, int IPI = 10)
     {
         int channel = FingerToChannel(finger);
@@ -139,7 +151,7 @@ public class Stimulation : MonoBehaviour
     public void StopStimulation() => WSS.StopStim(WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
-    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <param name="targetWSS">0 broadcasts, 1..3 select a unit, and any other value maps to unit 1.</param>
     /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void Save(int targetWSS)
     {
@@ -239,7 +251,9 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Updates a waveform using a JSON-loaded builder definition for a target unit.</summary>
-    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <param name="targetWSS">0 broadcasts, 1..3 select a unit, and any other value maps to unit 1.</param>
+    /// <param name="waveform">Waveform builder definition to serialize and send.</param>
+    /// <param name="eventID">Target event slot.</param>
     /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void updateWaveform(int targetWSS, WaveformBuilder waveform, int eventID)
     {
@@ -258,6 +272,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Defines a custom waveform for an event slot on all units.</summary>
+    /// <param name="wave">Waveform builder definition to store on the device.</param>
+    /// <param name="eventID">Target event slot.</param>
     /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void WaveformSetup(WaveformBuilder wave, int eventID)
     {
@@ -266,7 +282,9 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Defines a custom waveform for an event slot on a specific unit.</summary>
-    /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <param name="targetWSS">0 broadcasts, 1..3 select a unit, and any other value maps to unit 1.</param>
+    /// <param name="wave">Waveform builder definition to store on the device.</param>
+    /// <param name="eventID">Target event slot.</param>
     /// <remarks>No-op (logs an error) if basic stimulation is not supported.</remarks>
     public void WaveformSetup(int targetWSS, WaveformBuilder wave, int eventID)
     {
@@ -301,7 +319,7 @@ public class Stimulation : MonoBehaviour
     /// Stimulates using a normalized drive value in the range [0, 1].
     /// </summary>
     /// <param name="finger">Finger label or alias.</param>
-    /// <param name="magnitude">Normalized drive in [0, 1].</param>
+    /// <param name="magnitude">Normalized drive in the range [0, 1].</param>
     public void StimulateNormalized(string finger, float magnitude)
     {
         int ch = FingerToChannel(finger);
@@ -309,6 +327,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Gets the last computed stimulation intensity for a finger.</summary>
+    /// <param name="finger">Finger label or alias.</param>
+    /// <returns>The last intensity value produced by the active model pipeline for that channel.</returns>
     /// <remarks>For PW-driven systems this value is pulse width in microseconds.</remarks>
     public int GetStimIntensity(string finger)
     {
@@ -317,24 +337,35 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Saves model-layer parameters JSON to disk.</summary>
+    /// <remarks>Persists the current in-memory stimulation parameters using the wrapper's configured default path.</remarks>
     public void SaveParamsJson() => WSS.SaveParamsJson();
 
-    /// <summary>Loads model-layer parameters JSON from default location.</summary>
+    /// <summary>Loads model-layer parameters JSON from the default location.</summary>
+    /// <remarks>Replaces the current in-memory parameter values with the persisted values.</remarks>
     public void LoadParamsJson() => WSS.LoadParamsJson();
 
     /// <summary>Loads model-layer parameters JSON from a specified path.</summary>
+    /// <param name="pathOrDir">A file path, or a directory that the underlying API resolves to its default filename.</param>
     public void LoadParamsJson(string pathOrDir) => WSS.LoadParamsJson(pathOrDir);
 
-    /// <summary>Sets a parameter by dotted key (e.g., "stim.ch.1.amp").</summary>
+    /// <summary>Sets a parameter by dotted key.</summary>
+    /// <param name="key">Dotted parameter path such as <c>stim.ch.1.amp</c>.</param>
+    /// <param name="value">Parameter value to store.</param>
     public void AddOrUpdateStimParam(string key, float value) => WSS.AddOrUpdateStimParam(key, value);
 
     /// <summary>Gets a parameter by dotted key.</summary>
+    /// <param name="key">Dotted parameter path.</param>
+    /// <returns>The current value stored for <paramref name="key"/>.</returns>
     public float GetStimParam(string key) => WSS.GetStimParam(key);
 
-    /// <summary>Attempts to read a parameter by key, returns <c>true</c> on success.</summary>
+    /// <summary>Attempts to read a parameter by key.</summary>
+    /// <param name="key">Dotted parameter path.</param>
+    /// <param name="v">Receives the current value when the key exists.</param>
+    /// <returns><c>true</c> when the key exists; otherwise <c>false</c>.</returns>
     public bool TryGetStimParam(string key, out float v) => WSS.TryGetStimParam(key, out v);
 
     /// <summary>Returns a dictionary copy of all current stimulation parameters.</summary>
+    /// <returns>A new dotted-key map representing the current parameter state.</returns>
     public Dictionary<string, float> GetAllStimParams() => WSS.GetAllStimParams();
 
     /// <summary>Sets per-finger amplitude in milliamps.</summary>
@@ -394,6 +425,8 @@ public class Stimulation : MonoBehaviour
     }
 
     /// <summary>Checks whether the specified finger maps to a valid channel index.</summary>
+    /// <param name="finger">Finger label or alias.</param>
+    /// <returns><c>true</c> when the resolved channel is valid for the current configuration.</returns>
     public bool IsFingerValid(string finger)
     {
         int ch = FingerToChannel(finger);
@@ -405,6 +438,7 @@ public class Stimulation : MonoBehaviour
     /// </summary>
     /// <param name="finger">Finger label or alias.</param>
     /// <param name="magnitude">Normalized or physical magnitude input expected by the current mode.</param>
+    /// <remarks>The meaning of <paramref name="magnitude"/> depends on the currently loaded model mode.</remarks>
     public void StimWithMode(string finger, float magnitude)
     {
         int ch = FingerToChannel(finger);
@@ -419,6 +453,7 @@ public class Stimulation : MonoBehaviour
     /// <param name="min">Minimum pulse width in microseconds.</param>
     /// <param name="amp">Amplitude in milliamps.</param>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="finger"/> maps to an invalid channel.</exception>
+    /// <remarks>Updates the backing dotted-key parameter entries used by the params/model layers.</remarks>
     public void UpdateChannelParams(string finger, int max, int min, int amp)
     {
         int ch = FingerToChannel(finger);
@@ -436,18 +471,23 @@ public class Stimulation : MonoBehaviour
     #region ==== Config and state ====
 
     /// <summary>Returns <c>true</c> if the model mode currently loaded is valid.</summary>
+    /// <returns><c>true</c> when the active model configuration can accept stimulation requests.</returns>
     public bool isModeValid() => WSS.IsModeValid();
 
     /// <summary>Returns <c>true</c> if the device is initialized and ready.</summary>
+    /// <returns><c>true</c> when setup completed successfully and the wrapper can send commands.</returns>
     public bool Ready() => WSS.Ready();
 
     /// <summary>Returns <c>true</c> if stimulation is currently active.</summary>
+    /// <returns><c>true</c> when the underlying core reports an active stimulation session.</returns>
     public bool Started() => WSS.Started();
 
     /// <summary>Provides access to the model configuration controller.</summary>
+    /// <returns>The current model configuration controller owned by the wrapper.</returns>
     public ModelConfigController GetModelConfigCTRL() => WSS.GetModelConfigController();
 
     /// <summary>Provides access to the core configuration controller.</summary>
+    /// <returns>The current core configuration controller owned by the wrapper.</returns>
     public CoreConfigController GetCoreConfigCTRL() => WSS.GetCoreConfigController();
 
     #endregion

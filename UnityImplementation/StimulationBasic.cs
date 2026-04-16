@@ -11,6 +11,9 @@ using Wss.CoreModule;
 /// 
 /// Lifecycle: the device is initialized in <see cref="OnEnable"/>, ticked in <see cref="Update"/>,
 /// and shut down in <see cref="OnDisable"/>.
+///
+/// When <see cref="forcePort"/> is <c>false</c>, the wrapper auto-selects a serial port. When
+/// <see cref="testMode"/> is <c>true</c>, it uses an in-memory test transport instead of hardware.
 /// </remarks>
 public class Stimulationbasic : MonoBehaviour
 {
@@ -55,6 +58,7 @@ public class Stimulationbasic : MonoBehaviour
     /// Creates the transport and configures the stimulation core controller.
     /// Uses test mode, a forced COM port, or default auto-detected connection.
     /// </summary>
+    /// <remarks>Uses <see cref="Application.streamingAssetsPath"/> as the core configuration root.</remarks>
     public void Awake()
     {
         ITransport transport =
@@ -141,6 +145,7 @@ public class Stimulationbasic : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void Save(int targetWSS) => basicWSS.Save(IntToWssTarget(targetWSS));
 
     /// <inheritdoc cref="IBasicStimulation.Save(WssTarget)"/>
@@ -149,6 +154,7 @@ public class Stimulationbasic : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void load(int targetWSS) => basicWSS.Load(IntToWssTarget(targetWSS));
 
     /// <inheritdoc cref="IBasicStimulation.Load(WssTarget)"/>
@@ -159,6 +165,7 @@ public class Stimulationbasic : MonoBehaviour
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
     /// <param name="command">Configuration block selector.</param>
     /// <param name="id">Optional block id.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void request_Configs(int targetWSS, int command, int id)
         => basicWSS.Request_Configs(command, id, IntToWssTarget(targetWSS));
 
@@ -169,15 +176,18 @@ public class Stimulationbasic : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(int[],int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void updateWaveform(int targetWSS, int[] waveform, int eventID)
         => basicWSS.UpdateWaveform(waveform, eventID, IntToWssTarget(targetWSS));
 
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
+    /// <remarks>Broadcasts to all connected WSS units.</remarks>
     public void updateWaveform(int cathodicWaveform, int anodicWaveform, int eventID)
         => basicWSS.UpdateEventShape(cathodicWaveform, anodicWaveform, eventID, WssTarget.Broadcast);
 
     /// <inheritdoc cref="IBasicStimulation.UpdateEventShape(int,int,int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void updateWaveform(int targetWSS, int cathodicWaveform, int anodicWaveform, int eventID)
         => basicWSS.UpdateEventShape(cathodicWaveform, anodicWaveform, eventID, IntToWssTarget(targetWSS));
 
@@ -188,10 +198,13 @@ public class Stimulationbasic : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.UpdateWaveform(WaveformBuilder,int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void updateWaveform(int targetWSS, WaveformBuilder waveform, int eventID)
         => basicWSS.UpdateWaveform(waveform, eventID, IntToWssTarget(targetWSS));
 
     /// <inheritdoc cref="IBasicStimulation.LoadWaveform(string,int)"/>
+    /// <param name="fileName">Waveform file name or path understood by the underlying basic API.</param>
+    /// <param name="eventID">Target event slot.</param>
     public void loadWaveform(string fileName, int eventID)
         => basicWSS.LoadWaveform(fileName, eventID);
 
@@ -202,6 +215,7 @@ public class Stimulationbasic : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.WaveformSetup(WaveformBuilder,int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void WaveformSetup(int targetWSS, WaveformBuilder wave, int eventID)
         => basicWSS.WaveformSetup(wave, eventID, IntToWssTarget(targetWSS));
 
@@ -212,6 +226,7 @@ public class Stimulationbasic : MonoBehaviour
 
     /// <inheritdoc cref="IBasicStimulation.UpdateIPD(int,int,WssTarget)"/>
     /// <param name="targetWSS">0=broadcast, 1..3=unit index. Other values map to unit 1.</param>
+    /// <remarks>Values outside the documented range fall back to unit 1 through the wrapper mapping.</remarks>
     public void UpdateIPD(int targetWSS, int ipd, int eventID)
         => basicWSS.UpdateIPD(ipd, eventID, IntToWssTarget(targetWSS));
 
@@ -220,12 +235,15 @@ public class Stimulationbasic : MonoBehaviour
     #region ==== Getters ====
 
     /// <summary>Returns <c>true</c> if the device has completed setup and is ready.</summary>
+    /// <returns><c>true</c> when setup completed successfully and the wrapper can send commands.</returns>
     public bool Ready() => WSS.Ready();
 
     /// <summary>Returns <c>true</c> if stimulation is currently active.</summary>
+    /// <returns><c>true</c> when the underlying core reports an active stimulation session.</returns>
     public bool Started() => WSS.Started();
 
     /// <summary>Provides access to the core configuration controller.</summary>
+    /// <returns>The current core configuration controller owned by the wrapper.</returns>
     public CoreConfigController GetCoreConfigCTRL() => WSS.GetCoreConfigController();
 
     #endregion

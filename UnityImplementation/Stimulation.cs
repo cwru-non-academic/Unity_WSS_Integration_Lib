@@ -1,6 +1,9 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using System;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Wss.CoreModule;
 using Wss.CalibrationModule;
 using Wss.ModelModule;
@@ -83,6 +86,50 @@ public class Stimulation : MonoBehaviour
     #endregion
 
     #region ==== Connection Management ====
+
+    /// <summary>
+    /// Updates the ratio for one event and completes when the DLL returns its acknowledgement.
+    /// This reflection bridge is temporary until EditEventRatio is exposed by IBasicStimulation.
+    /// </summary>
+    public Task<string> UpdateEventRatioAsync(int eventId, int ratio, int targetWSS = 0)
+    {
+        if (eventId < 1) throw new ArgumentOutOfRangeException(nameof(eventId));
+        if (ratio < 1) throw new ArgumentOutOfRangeException(nameof(ratio));
+
+        object core = GetPrivateField(WSS, "_inner");
+        core = GetPrivateField(core, "_core");
+        object client = GetPrivateField(core, "_wss");
+        if (client == null) throw new InvalidOperationException("The WSS client is not initialized.");
+
+        MethodInfo editRatio = client.GetType().GetMethod(
+            "EditEventRatio",
+            BindingFlags.Instance | BindingFlags.Public,
+            null,
+            new[] { typeof(int), typeof(int), typeof(WssTarget), typeof(CancellationToken) },
+            null);
+        if (editRatio == null)
+            throw new MissingMethodException("This WSS DLL does not expose EditEventRatio.");
+
+        try
+        {
+            var task = editRatio.Invoke(client, new object[]
+            {
+                eventId, ratio, IntToWssTarget(targetWSS), CancellationToken.None
+            }) as Task<string>;
+            return task ?? throw new InvalidOperationException($"Event {eventId} ratio update was not queued.");
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException != null)
+        {
+            throw ex.InnerException;
+        }
+    }
+
+    private static object GetPrivateField(object instance, string fieldName)
+    {
+        if (instance == null) return null;
+        FieldInfo field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        return field?.GetValue(instance);
+    }
 
     /// <summary>Explicitly closes the radio connection.</summary>
     public void releaseRadio() => WSS.Shutdown();

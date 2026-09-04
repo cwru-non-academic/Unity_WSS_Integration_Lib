@@ -413,7 +413,7 @@ public class Stimulation : MonoBehaviour
         string baseKey = $"stim.ch.{ch}";
         WSS.AddOrUpdateStimParam($"{baseKey}.maxPW", max);
         WSS.AddOrUpdateStimParam($"{baseKey}.minPW", min);
-        WSS.AddOrUpdateStimParam($"{baseKey}.amp", amp);
+        WSS.AddOrUpdateStimParam($"{baseKey}.defaultPA", amp);
     }
 
     #endregion

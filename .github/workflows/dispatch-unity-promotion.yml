@@ -40,7 +40,6 @@ jobs:
             WSSCore
             Unity_WSS_Integration_Lib
             GUI_Unity_WSS_Application
-            CSharp_WSS_Integration_Lib
           permission-contents: read
           permission-actions: read
           permission-pull-requests: read

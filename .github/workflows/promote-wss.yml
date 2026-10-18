@@ -40,11 +40,19 @@ jobs:
             WSSCore
             Unity_WSS_Integration_Lib
             GUI_Unity_WSS_Application
-            CSharp_WSS_Integration_Lib
           permission-contents: read
           permission-actions: read
           permission-pull-requests: read
+      - name: Validate producer, candidate projection and no-op before dispatch credentials
+        id: candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          CANDIDATE_JSON: ${{ inputs.candidate_json }}
+        run: |
+          ./source/.github/scripts/Prepare-UnityPromotion.ps1 -Role wrapper -RepositoryRoot "$env:GITHUB_WORKSPACE/source" -WorkRoot "$env:RUNNER_TEMP/unity-validation" -CandidateJson $env:CANDIDATE_JSON -ValidateOnly
       - uses: actions/create-github-app-token@v2
+        if: steps.candidate.outputs.no_op == 'false'
         id: preflight
         with:
           app-id: ${{ vars.WSS_GITHUB_APP_ID }}
@@ -54,9 +62,9 @@ jobs:
             Unity_WSS_Integration_Lib
             GUI_Unity_WSS_Application
           permission-actions: write
-          permission-contents: read
 
       - name: Verify exact candidate, both runtime preflights and sources
+        if: steps.candidate.outputs.no_op == 'false'
         id: prepare
         shell: pwsh
         env:
@@ -93,3 +101,4 @@ jobs:
             ${{ runner.temp }}/unity-promotion/approval.json
             ${{ runner.temp }}/unity-promotion/prepared.json
             ${{ runner.temp }}/unity-promotion/projection.json
+            ${{ runner.temp }}/unity-validation/prepared.json

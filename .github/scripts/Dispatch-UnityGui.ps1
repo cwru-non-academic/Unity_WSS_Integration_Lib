@@ -9,6 +9,7 @@ New-Item -ItemType Directory -Path $WorkRoot | Out-Null
 $approval=Read-UnityApprovalMarker $pr.body (Join-Path $WorkRoot 'approval.json')
 if ($pr.head.ref -cne "automation/unity-wss-$($approval.candidate.run_id)-$($approval.candidate.sha256)") { throw 'Promotion branch/candidate mismatch.' }
 $config=Read-UnityConfig "$PSScriptRoot/../unity-ci.json"
+if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { throw 'Approved .NET promotion baseline required.' }
 Assert-UnityApproval $approval (Join-Path $WorkRoot 'evidence') $config
 Assert-UnityMergedWrapper $pr.merge_commit_sha ([string]$pr.number) $approval
 $body=@{ref='dev';inputs=@{wrapper_sha=$pr.merge_commit_sha;wrapper_pr=[string]$pr.number;approval_json=($approval | ConvertTo-Json -Depth 8 -Compress)}} | ConvertTo-Json -Depth 6 -Compress

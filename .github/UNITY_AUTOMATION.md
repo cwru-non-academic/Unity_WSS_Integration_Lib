@@ -68,22 +68,55 @@ allowed. The Unity-specific approval schema/marker remains separate from the C#
 cascade. No-op and existing-PR/replay guards, dependency/gitlink diff allowlists,
 no-force-push and manual merge behavior remain in place.
 
-## Remaining promotion setup
+## Automatic promotion and deployment
 
 Routine dependency promotion targets **dev** in both Unity repositories. Their
 published baseline preserves wrapper history including ce6d9ef and the archived
 amp_control tip; main merges remain the user's responsibility.
 
-`baseline_ready` remains false: future candidate preflight/promotion and reviewed
-merge dispatch require a separate approved baseline. The blank `gui_harness_sha`
-is not used by normal .NET wrapper CI; candidate inputs already pin both sources.
-Default branches still need user-reviewed workflow publication before future
-workflow dispatch can be relied upon. Core-to-Unity automatic handoff is not enabled.
+`baseline_ready` is true following approval of the real .NET conformance path.
+The blank `gui_harness_sha` is not used by automated .NET validation; candidate
+inputs pin both sources. All automatic PRs target dev and require HUMAN merges.
+
+Core's separate `propagate-unity.yml` completion workflow runs only after the exact
+successful `artifacts.yml` **push to dev** completes. Opening a Core PR only tests
+that PR. Its own handoff failure cannot change the producer result or interrupt
+the existing C# cascade. It verifies producer identity/dev ancestry, all eleven
+required producer jobs, the exact unexpired artifact ID and archive checksum before
+requesting an existing App token restricted to Unity-wrapper Actions-write.
+
+The wrapper revalidates that complete tuple, resolves a fresh candidate projection
+and checks for a verified no-op before obtaining preflight dispatch credentials.
+A changed projection requires BOTH source-bound .NET preflights and complete
+evidence validation before a wrapper-only contents/PR token can create the
+restricted dependency PR. Correlation includes producer/artifact IDs and both
+immutable source SHAs; an old failed or ambiguous run is never blindly replaced.
+
+After a human merges the canonical bot PR into wrapper dev, the trusted-base
+dispatcher validates the actual merge, latest final-head normal PR CI, approval
+and all committed DLL/importer bytes. It then dispatches GUI promotion. The GUI
+revalidates the initial proof, executes a NEW candidate preflight against the actual
+merged wrapper SHA and current GUI source, verifies it, and only then mints its
+own contents/PR-write token for a gitlink-only PR. That PR carries both the original
+approval marker and the exact merged-wrapper GUI preflight marker. Repeated exact
+requests reuse the existing PR; conflicting/stale branches stop without force push.
+
+Before these events can work, humans must publish the Unity wrapper and GUI dev
+workflow baselines to their default main branches and merge Core's separate handoff
+workflow into its default main. GitHub requires default-branch presence for
+[workflow dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+and [workflow_run](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
+No default branch was pushed or merged by this implementation. Historical producer
+events are not fabricated/replayed merely to make a dependency PR appear.
 
 Repository-level Actions secret/variable name inventories were empty. Inherited
-configuration is unverified. Future candidate promotion needs existing approved
+configuration is unverified. Candidate promotion needs existing approved
 `WSS_GITHUB_APP_ID` / `WSS_GITHUB_APP_PRIVATE_KEY` access and scoped permissions;
-none were created, changed or assumed by this implementation.
+none were created or changed. Existing Core-to-C# App use succeeded, but the current
+account cannot enumerate organization App installations without an additional
+admin:org scope; that scope was not requested. Runtime capability failures must
+identify the missing existing repository/Actions configuration and stop that hop.
+Normal conformance still uses public read-only checkout and no App secret.
 
 ## Manual Unity verification and coverage limits
 

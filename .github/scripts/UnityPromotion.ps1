@@ -17,7 +17,15 @@ function Wait-UnityRun([string]$Repository,[string]$RunId,[string]$Sha,[string]$
 function Assert-UnityProducer($Candidate) {
     Assert-UnityCandidate $Candidate
     $run=Wait-UnityRun $Candidate.repository $Candidate.run_id $Candidate.commit 'artifacts.yml' 'push'
-    if ($run.head_branch -cne 'dev') { throw 'Automatic Unity propagation requires the trusted Core dev push.' }
+    if ($run.head_branch -cne 'dev' -or $run.head_repository.full_name -cne $Candidate.repository -or $Candidate.archive -cne 'WSS-Universal-ci.zip') { throw 'Automatic Unity propagation requires the canonical Core dev push archive.' }
+    $compare=Invoke-UnityGh @('api',"repos/$($Candidate.repository)/compare/$($Candidate.commit)...dev") | ConvertFrom-Json
+    if ($compare.status -cnotin @('ahead','identical')) { throw 'Producer commit is not contained in Core dev.' }
+    $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$($Candidate.repository)/actions/runs/$($Candidate.run_id)/jobs?per_page=100&filter=latest") | ConvertFrom-Json
+    $jobs=@($pages | ForEach-Object { $_.jobs })
+    foreach ($name in @('Build and validate artifacts','Core conformance','Serial consumer (Windows)','Serial consumer (macOS)','Serial consumer (Linux)','BLE consumer (Windows)','BLE consumer (Linux)','Core consumer (Windows)','Core consumer (macOS)','Core consumer (Linux)','Start routine downstream validation')) {
+        $matching=@($jobs | Where-Object { $_.name -ceq $name })
+        if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Required Core producer job missing/skipped/failed: $name" }
+    }
     $artifact=Invoke-UnityGh @('api',"repos/$($Candidate.repository)/actions/artifacts/$($Candidate.artifact_id)") | ConvertFrom-Json
     if ($artifact.expired -or $artifact.name -cne 'universal-release-assets' -or [string]$artifact.workflow_run.id -cne [string]$Candidate.run_id -or $artifact.workflow_run.head_sha -cne $Candidate.commit) { throw 'Wrong/expired producer artifact.' }
 }
@@ -27,7 +35,9 @@ function Get-UnityHead([string]$Repository) {
     $branch.commit.sha
 }
 function Start-UnityPreflight([string]$Repository,$Candidate,[string]$WrapperSha,[string]$GuiSha) {
-    $correlation="wss-$($Candidate.run_id)-$($Candidate.artifact_id)"
+    Assert-UnitySha $WrapperSha
+    Assert-UnitySha $GuiSha
+    $correlation="wss-$($Candidate.run_id)-$($Candidate.artifact_id)-$WrapperSha-$GuiSha"
     $title="WSS preflight $($Candidate.run_id) / $correlation"
     function Find-Run {
         $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$Repository/actions/workflows/wss-preflight.yml/runs?event=workflow_dispatch&per_page=100") | ConvertFrom-Json
@@ -125,12 +135,56 @@ function Assert-UnityApproval($Approval,[string]$EvidenceRoot,$Config) {
             $e.fixture_sha256 -cne $Approval.fixture.sha256) { throw 'Preflights did not test the same source/candidate tuple.' }
     }
 }
+function Assert-UnityMergedGuiPreflight($Approval,[string]$WrapperSha,[string]$GuiSha,[string]$RunId,[string]$Root,$Config) {
+    Assert-UnitySha $WrapperSha
+    Assert-UnitySha $GuiSha
+    if ($RunId -cnotmatch '^[1-9][0-9]*$') { throw 'Exact merged-wrapper GUI preflight ID required.' }
+    $e=Get-UnityEvidence $UnityGuiRepository $RunId $GuiSha 'gui' $Approval.candidate $Root $Config
+    if ($e.wrapper_sha -cne $WrapperSha -or $e.gui_sha -cne $GuiSha -or $e.projection_sha256 -cne $Approval.projection_sha256 -or
+        $e.fixture_sha -cne $Approval.fixture.commit -or $e.fixture_sha256 -cne $Approval.fixture.sha256) { throw 'GUI preflight did not test the exact accepted merged wrapper and current GUI source.' }
+}
+function Get-UnityGuiPreflightMarker([string]$WrapperSha,[string]$GuiSha,[string]$RunId) {
+    Assert-UnitySha $WrapperSha
+    Assert-UnitySha $GuiSha
+    if ($RunId -cnotmatch '^[1-9][0-9]*$') { throw 'Invalid GUI preflight ID.' }
+    $record=[ordered]@{wrapper_sha=$WrapperSha;gui_sha=$GuiSha;preflight_run_id=$RunId} | ConvertTo-Json -Compress
+    '<!-- wss-unity-gui-preflight:v1 '+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($record))+' -->'
+}
+function Assert-UnityRemoteProjection([string]$Sha,$Record) {
+    Assert-UnitySha $Sha
+    if ($Record.schema -cne 'wss-unity-projection/v1' -or (Get-UnityProjectionDigest $Record.files) -cne $Record.projection_sha256 -or
+        @(Compare-Object $UnityProjectionFiles @($Record.files.source) -CaseSensitive).Count) { throw 'Invalid merged projection inventory/digest.' }
+    $tree=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/git/trees/${Sha}?recursive=1") | ConvertFrom-Json
+    if ($tree.truncated) { throw 'Merged wrapper tree response is truncated.' }
+    $dlls=@($tree.tree | Where-Object { $_.path.StartsWith($UnityPluginPath+'/',[StringComparison]::Ordinal) -and $_.path.EndsWith('.dll',[StringComparison]::Ordinal) } | ForEach-Object { $_.path })
+    $expected=@($UnityProjectionFiles | ForEach-Object { "$UnityPluginPath/$([IO.Path]::GetFileName($_))" })
+    if (@(Compare-Object $expected $dlls -CaseSensitive).Count) { throw 'Merged wrapper has extra/missing payload DLLs.' }
+    foreach ($file in $Record.files) {
+        foreach ($suffix in @('','.meta')) {
+            $path="$UnityPluginPath/$([IO.Path]::GetFileName($file.source))$suffix"
+            $entries=@($tree.tree | Where-Object { $_.path -ceq $path -and $_.type -ceq 'blob' })
+            if ($entries.Count -ne 1) { throw "Merged payload path missing/ambiguous: $path" }
+            $blob=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/git/blobs/$($entries[0].sha)") | ConvertFrom-Json
+            if ($blob.encoding -cne 'base64') { throw 'Unsupported merged blob encoding.' }
+            $bytes=[Convert]::FromBase64String($blob.content)
+            if ($suffix) {
+                $reader=[IO.StreamReader]::new([IO.MemoryStream]::new($bytes),[Text.Encoding]::UTF8,$true)
+                try { $text=$reader.ReadToEnd() } finally { $reader.Dispose() }
+                $bytes=[Text.Encoding]::UTF8.GetBytes($text.Replace("`r`n","`n"))
+            }
+            $hash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            $expectedHash=if ($suffix) { $file.meta_sha256 } else { $file.sha256 }
+            if ($hash -cne $expectedHash) { throw "Actual merged payload differs from accepted evidence: $path" }
+        }
+    }
+}
 function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     Assert-UnitySha $Sha
     if ($PrNumber -cnotmatch '^[1-9][0-9]*$') { throw 'Invalid wrapper PR number.' }
     $pr=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/pulls/$PrNumber") | ConvertFrom-Json
     if (!$pr.merged -or $pr.merge_commit_sha -cne $Sha -or $pr.base.ref -cne 'dev' -or $pr.base.repo.full_name -cne $UnityWrapperRepository -or
         $pr.head.repo.full_name -cne $UnityWrapperRepository -or $pr.user.type -cne 'Bot') { throw 'Wrapper must be the actual reviewed same-repository bot PR merge into dev.' }
+    if ($pr.head.ref -cne "automation/unity-wss-$($Approval.candidate.run_id)-$($Approval.candidate.sha256)") { throw 'Merged wrapper PR is not the canonical candidate branch.' }
     $compare=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/compare/${Sha}...dev") | ConvertFrom-Json
     if ($compare.status -cnotin @('ahead','identical')) { throw 'Wrapper merge is not contained in dev.' }
     $delta=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/compare/$($Approval.wrapper.source_sha)...$Sha") | ConvertFrom-Json
@@ -146,6 +200,7 @@ function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     $record=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($content.content)) | ConvertFrom-Json
     Assert-UnitySameCandidate $record.candidate $Approval.candidate
     if ($record.projection_sha256 -cne $Approval.projection_sha256) { throw 'Merged projection differs from preflights.' }
+    Assert-UnityRemoteProjection $Sha $record
     $marker=Get-UnityApprovalMarker $Approval
     if (!(($pr.body -split "`r?`n") -ccontains $marker)) { throw 'Merged PR does not carry the exact approval.' }
 }

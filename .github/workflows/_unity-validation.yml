@@ -69,11 +69,7 @@ jobs:
           app-id: ${{ vars.WSS_GITHUB_APP_ID }}
           private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
           owner: cwru-non-academic
-          repositories: |
-            WSSCore
-            Unity_WSS_Integration_Lib
-            GUI_Unity_WSS_Application
-            CSharp_WSS_Integration_Lib
+          repositories: WSSCore
           permission-contents: read
           permission-actions: read
       - uses: actions/checkout@v4
@@ -82,7 +78,7 @@ jobs:
           ref: ${{ needs.prerequisites.outputs.wrapper }}
           path: wrapper
           lfs: true
-          token: ${{ steps.read.outputs.token || github.token }}
+          token: ${{ github.token }}
           persist-credentials: false
       - uses: actions/checkout@v4
         if: needs.prerequisites.outputs.gui != ''
@@ -90,14 +86,14 @@ jobs:
           repository: cwru-non-academic/GUI_Unity_WSS_Application
           ref: ${{ needs.prerequisites.outputs.gui }}
           path: gui
-          token: ${{ steps.read.outputs.token || github.token }}
+          token: ${{ github.token }}
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/CSharp_WSS_Integration_Lib
           ref: ${{ needs.prerequisites.outputs.fixture }}
           path: fixture
-          token: ${{ steps.read.outputs.token || github.token }}
+          token: ${{ github.token }}
           persist-credentials: false
       - name: Resolve exact producer candidate
         if: inputs.mode == 'candidate'

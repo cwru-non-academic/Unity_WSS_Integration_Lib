@@ -1,7 +1,7 @@
 {
   "schema": "wss-unity-ci/v1",
   "branch": "dev",
-  "baseline_ready": false,
+  "baseline_ready": true,
   "gui_harness_sha": "",
   "license_route": "personal-hosted-unverified",
   "editor": "2022.3.62f3",

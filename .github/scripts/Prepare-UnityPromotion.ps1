@@ -5,13 +5,15 @@ param(
     [string]$CandidateJson='',
     [string]$ApprovalJson='',
     [string]$WrapperMergeSha='',
-    [string]$WrapperPr=''
+    [string]$WrapperPr='',
+    [switch]$ValidateOnly
 )
 . "$PSScriptRoot/UnityPromotion.ps1"
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_REF -cne 'refs/heads/dev') { throw 'Promotion preparation runs only in the trusted dev workflow.' }
 if (Test-Path -LiteralPath $WorkRoot) { throw 'WorkRoot must be new.' }
 New-Item -ItemType Directory -Path $WorkRoot | Out-Null
 $config=Read-UnityConfig (Join-Path $RepositoryRoot '.github/unity-ci.json')
+if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { throw 'Approved .NET promotion baseline required.' }
 $source=(Invoke-UnityGit $RepositoryRoot @('rev-parse','HEAD')).Trim()
 Assert-UnitySource $RepositoryRoot $source -IgnoreSubmodule
 if ($source -cne $env:GITHUB_SHA) { throw 'Promotion checkout differs from trusted workflow source.' }
@@ -33,6 +35,12 @@ if ($Role -ceq 'wrapper') {
     }
     $guiSha=Get-UnityHead $UnityGuiRepository
     if ((Get-UnityHead $UnityWrapperRepository) -cne $source) { throw 'Wrapper dev advanced before preflight.' }
+    if ($ValidateOnly) {
+        @{no_op=$false;role=$Role;source_sha=$source;gui_source_sha=$guiSha} | ConvertTo-Json | Set-Content (Join-Path $WorkRoot 'prepared.json')
+        'no_op=false' >> $env:GITHUB_OUTPUT
+        Write-Output 'Producer, archive, projection and source validated before preflight write credentials.'
+        exit 0
+    }
     $wrapperRun=Start-UnityPreflight $UnityWrapperRepository $candidate $source $guiSha
     $guiRun=Start-UnityPreflight $UnityGuiRepository $candidate $source $guiSha
     $approval=[ordered]@{
@@ -60,7 +68,18 @@ if ($Role -ceq 'wrapper') {
         Write-Output 'Verified existing accepted gitlink; no PR.'
         exit 0
     }
-    if ($source -cne $approval.gui.source_sha) { throw 'GUI source advanced since preflight; revalidation is required.' }
+    if ((Get-UnityHead $UnityGuiRepository) -cne $source) { throw 'GUI dev advanced before merged-wrapper preflight.' }
+    if ($ValidateOnly) {
+        @{no_op=$false;role=$Role;source_sha=$source;wrapper_merge_sha=$WrapperMergeSha;wrapper_pr=$WrapperPr} | ConvertTo-Json | Set-Content (Join-Path $WorkRoot 'prepared.json')
+        'no_op=false' >> $env:GITHUB_OUTPUT
+        Write-Output 'Existing approval and actual reviewed wrapper merge validated before GUI preflight write credentials.'
+        exit 0
+    }
+    $postMerge=Start-UnityPreflight $UnityGuiRepository $candidate $WrapperMergeSha $source
+    $guiPreflightId=[string]$postMerge.id
+    Assert-UnityMergedGuiPreflight $approval $WrapperMergeSha $source $guiPreflightId (Join-Path $WorkRoot 'merged-gui-evidence') $config
 }
-@{no_op=$false;role=$Role;source_sha=$source;wrapper_merge_sha=$WrapperMergeSha;wrapper_pr=$WrapperPr} | ConvertTo-Json | Set-Content (Join-Path $WorkRoot 'prepared.json')
+$prepared=@{no_op=$false;role=$Role;source_sha=$source;wrapper_merge_sha=$WrapperMergeSha;wrapper_pr=$WrapperPr}
+if ($Role -ceq 'gui') { $prepared.gui_preflight_run_id=$guiPreflightId }
+$prepared | ConvertTo-Json | Set-Content (Join-Path $WorkRoot 'prepared.json')
 'no_op=false' >> $env:GITHUB_OUTPUT

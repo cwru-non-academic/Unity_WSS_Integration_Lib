@@ -7,6 +7,7 @@ $role=$prepared.role
 $repo=if ($role -ceq 'wrapper') { $UnityWrapperRepository } elseif ($role -ceq 'gui') { $UnityGuiRepository } else { throw 'Unexpected promotion role.' }
 if ($repo -cne $env:GITHUB_REPOSITORY) { throw 'Wrong publication repository.' }
 $config=Read-UnityConfig (Join-Path $RepositoryRoot '.github/unity-ci.json')
+if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { throw 'Approved .NET promotion baseline required.' }
 $approval=Read-UnityApproval (Join-Path $WorkRoot 'approval.json')
 Assert-UnityApproval $approval (Join-Path $WorkRoot 'publication-evidence') $config
 Assert-UnitySource $RepositoryRoot $prepared.source_sha -IgnoreSubmodule
@@ -30,7 +31,8 @@ if ($role -ceq 'wrapper') {
     Assert-UnityProjection (Join-Path $RepositoryRoot $UnityPluginPath) $projection
 } else {
     Assert-UnityMergedWrapper $prepared.wrapper_merge_sha $prepared.wrapper_pr $approval
-    if ($prepared.source_sha -cne $approval.gui.source_sha) { throw 'Untested GUI source.' }
+    Assert-UnityMergedGuiPreflight $approval $prepared.wrapper_merge_sha $prepared.source_sha $prepared.gui_preflight_run_id (Join-Path $WorkRoot 'publication-merged-gui-evidence') $config
+    $guiMarker=Get-UnityGuiPreflightMarker $prepared.wrapper_merge_sha $prepared.source_sha $prepared.gui_preflight_run_id
     $allowed=@($UnityGitlink)
     $null=Invoke-UnityGit $RepositoryRoot @('update-index','--cacheinfo',"160000,$($prepared.wrapper_merge_sha),$UnityGitlink")
     $entry=(Invoke-UnityGit $RepositoryRoot @('ls-files','--stage','--',$UnityGitlink)) -join ''
@@ -45,6 +47,7 @@ if ($pulls.Count -gt 1 -or ($pulls.Count -eq 1 -and $pulls[0].state -cne 'OPEN')
 $refs=@(Invoke-UnityGh @('api',"repos/$repo/git/matching-refs/heads/$branch") | ConvertFrom-Json | Where-Object { $_.ref -ceq "refs/heads/$branch" })
 if ($pulls.Count -eq 1) {
     if ($refs.Count -ne 1 -or $pulls[0].headRefOid -cne $refs[0].object.sha -or !(($pulls[0].body -split "`r?`n") -ccontains $marker)) { throw 'Existing PR branch/metadata conflict.' }
+    if ($role -ceq 'gui' -and !(($pulls[0].body -split "`r?`n") -ccontains $guiMarker)) { throw 'Existing GUI PR does not carry the exact merged-wrapper preflight.' }
     $remoteCommit=Invoke-UnityGh @('api',"repos/$repo/git/commits/$($refs[0].object.sha)") | ConvertFrom-Json
     if ($remoteCommit.tree.sha -cne $tree -or @($remoteCommit.parents).Count -ne 1 -or $remoteCommit.parents[0].sha -cne $prepared.source_sha) { throw 'Existing PR is not the exact intended tree/source.' }
     Write-Output "Reusing exact existing PR: $($pulls[0].url)"
@@ -58,7 +61,9 @@ $header=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('x-access-token
 Write-Output "::add-mask::$header"
 $null=Invoke-UnityGit $RepositoryRoot @('-c',"http.https://github.com/.extraheader=AUTHORIZATION: basic $header",'push','origin',"HEAD:refs/heads/$branch")
 $bodyPath=Join-Path $WorkRoot 'pr-body.md'
-[IO.File]::WriteAllText($bodyPath,"Promotes the exact candidate accepted by both Unity preflights. Manual review/merge required; no player release.`n`n<!-- wss-unity-promotion:v1 -->`n$marker`n")
+$body="Promotes the exact candidate accepted by both .NET preflights in the Unity repositories. Manual review/merge required; no player release.`n`n<!-- wss-unity-promotion:v1 -->`n$marker`n"
+if ($role -ceq 'gui') { $body+="`nActual merged-wrapper GUI preflight: https://github.com/$UnityGuiRepository/actions/runs/$($prepared.gui_preflight_run_id)`n$guiMarker`n" }
+[IO.File]::WriteAllText($bodyPath,$body)
 $readToken=$env:GH_TOKEN
 try {
     $env:GH_TOKEN=$env:UNITY_PUSH_TOKEN

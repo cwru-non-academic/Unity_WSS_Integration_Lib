@@ -38,11 +38,11 @@ automation, review the published baselines, pin the accepted GUI SHA in
 default branch. Main merges remain the user's responsibility. Baseline approval
 flags and the unresolved Personal license gate remain disabled.
 
-Workflow/check display names intentionally match the C# counterparts, including
-their CLI labels in the application repository. Unity filenames and provenance
+Workflow/check display names match the C# counterparts with GUI labels for the
+application repository and its downstream references. Unity filenames and provenance
 roles remain distinct. Stable wrapper checks are **Integration behavioral tests**
 (committed state) and **Preflight behavioral tests** (candidate state). The GUI
-uses **CLI general conformance** in its committed and candidate workflows. Nested
+uses **GUI general conformance** in its committed and candidate workflows. Nested
 shared-workflow helpers use the counterpart Resolve/preflight/compatibility labels;
 validators bind the stable top-level check and its exact workflow path/source.
 
@@ -97,7 +97,7 @@ being published separately from enabling hosted execution. Earlier actual
 local Unity2022.3.62f3 EditMode result remains ten passed, zero failed/skipped.
 
 Stable check names: **Integration behavioral tests** for wrapper PRs,
-**Preflight behavioral tests** for wrapper candidate evidence, and **CLI general
+**Preflight behavioral tests** for wrapper candidate evidence, and **GUI general
 conformance** for GUI PR/candidate evidence. Establish real running jobs
 and resolve the licensing/publication blockers before requiring green checks in
 rulesets. The gates intentionally stay red meanwhile.

@@ -30,7 +30,7 @@ jobs:
           throw ($missing -join "\n")
   conformance:
     needs: prerequisites
-    name: ${{ inputs.role == 'wrapper' && (inputs.mode == 'candidate' && 'Preflight compatibility (Windows)' || 'Integration compatibility (Windows)') || 'CLI platform compatibility (Windows)' }}
+    name: ${{ inputs.role == 'wrapper' && (inputs.mode == 'candidate' && 'Preflight compatibility (Windows)' || 'Integration compatibility (Windows)') || 'GUI platform compatibility (Windows)' }}
     runs-on: windows-2022
     timeout-minutes: 30
     steps:

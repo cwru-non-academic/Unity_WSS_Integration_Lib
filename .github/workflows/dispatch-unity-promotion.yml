@@ -1,5 +1,5 @@
-name: Dispatch CLI Integration promotion
-run-name: Dispatch CLI promotion for ${{ github.event.pull_request.merge_commit_sha }}
+name: Dispatch GUI Integration promotion
+run-name: Dispatch GUI promotion for ${{ github.event.pull_request.merge_commit_sha }}
 on:
   pull_request_target:
     types: [closed]
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   dispatch:
-    name: Dispatch CLI promotion
+    name: Dispatch GUI promotion
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository &&

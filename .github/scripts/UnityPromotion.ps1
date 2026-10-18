@@ -90,7 +90,7 @@ function Read-UnityApprovalMarker([string]$Body,[string]$Destination) {
 function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,[string]$Root,$Config) {
     $null=Wait-UnityRun $Repository $RunId $SourceSha 'wss-preflight.yml' 'workflow_dispatch'
     $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$Repository/actions/runs/$RunId/jobs?per_page=100") | ConvertFrom-Json
-    $requiredName=if ($Role -ceq 'wrapper') { 'Preflight behavioral tests' } else { 'CLI general conformance' }
+    $requiredName=if ($Role -ceq 'wrapper') { 'Preflight behavioral tests' } else { 'GUI general conformance' }
     $required=@($pages | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq $requiredName })
     if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw 'Required candidate acceptance job missing/skipped/failed.' }
     if (Test-Path -LiteralPath $Root) { throw 'Evidence download destination must be new.' }

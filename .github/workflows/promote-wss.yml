@@ -1,0 +1,95 @@
+name: Promote WSS into Integration
+run-name: Promote universal WSS / wss-${{ fromJSON(inputs.candidate_json).run_id }}-${{ fromJSON(inputs.candidate_json).artifact_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_json: {description: Exact Core dev producer tuple, required: true, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: unity-promote-wrapper-dev
+  cancel-in-progress: false
+jobs:
+  promote:
+    name: Create WSS promotion PR
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Require trusted dev event
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -cne 'refs/heads/dev' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') { throw 'Only dev dispatch is accepted.' }
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Fail closed while baseline and Personal hosted licensing are unresolved
+        shell: pwsh
+        run: |
+          $config = Get-Content source/.github/unity-ci.json -Raw | ConvertFrom-Json
+          throw 'Unity promotion is blocked: publish/verify dev baseline and establish a supported hosted Unity Personal route. No write token or preflight dispatch is authorized by a skipped test.'
+      - uses: actions/create-github-app-token@v2
+        id: read
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: |
+            WSSCore
+            Unity_WSS_Integration_Lib
+            GUI_Unity_WSS_Application
+            CSharp_WSS_Integration_Lib
+          permission-contents: read
+          permission-actions: read
+          permission-pull-requests: read
+      - uses: actions/create-github-app-token@v2
+        id: preflight
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: |
+            Unity_WSS_Integration_Lib
+            GUI_Unity_WSS_Application
+          permission-actions: write
+          permission-contents: read
+
+      - name: Verify exact candidate, both runtime preflights and sources
+        id: prepare
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          UNITY_PREFLIGHT_TOKEN: ${{ steps.preflight.outputs.token }}
+          CANDIDATE_JSON: ${{ inputs.candidate_json }}
+        run: |
+          ./source/.github/scripts/Prepare-UnityPromotion.ps1 -Role wrapper -RepositoryRoot "$env:GITHUB_WORKSPACE/source" -WorkRoot "$env:RUNNER_TEMP/unity-promotion" -CandidateJson $env:CANDIDATE_JSON
+      - name: Mint target-only write token after validation
+        if: steps.prepare.outputs.no_op == 'false'
+        uses: actions/create-github-app-token@v2
+        id: write
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: Unity_WSS_Integration_Lib
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Create or reuse exact constrained PR; never merge
+        if: steps.prepare.outputs.no_op == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          UNITY_PUSH_TOKEN: ${{ steps.write.outputs.token }}
+        run: ./source/.github/scripts/Publish-UnityPromotion.ps1 -RepositoryRoot "$env:GITHUB_WORKSPACE/source" -WorkRoot "$env:RUNNER_TEMP/unity-promotion"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unity-promotion-record
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/unity-promotion/approval.json
+            ${{ runner.temp }}/unity-promotion/prepared.json
+            ${{ runner.temp }}/unity-promotion/projection.json

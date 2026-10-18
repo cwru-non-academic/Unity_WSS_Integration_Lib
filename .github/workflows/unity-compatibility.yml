@@ -1,0 +1,31 @@
+name: WSS integration compatibility
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: unity-wrapper-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    uses: ./.github/workflows/_unity-validation.yml
+    with:
+      role: wrapper
+      mode: committed
+      wrapper_sha: ${{ github.sha }}
+    secrets:
+      WSS_GITHUB_APP_PRIVATE_KEY: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+  acceptance:
+    name: Integration behavioral tests
+    if: always()
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require actual committed-state conformance
+        env:
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+        run: test "$VALIDATION_RESULT" = success

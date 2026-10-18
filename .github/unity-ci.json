@@ -1,0 +1,25 @@
+{
+  "schema": "wss-unity-ci/v1",
+  "branch": "dev",
+  "baseline_ready": false,
+  "gui_harness_sha": "",
+  "license_route": "personal-hosted-unverified",
+  "editor": "2022.3.62f3",
+  "revision": "96770f904ca7",
+  "test_framework": "1.1.33",
+  "fixture_repository": "cwru-non-academic/CSharp_WSS_Integration_Lib",
+  "fixture_commit": "7145e2307f997f703748530bf74311ef94455e98",
+  "fixture_sha256": "1cdfb9448a1776011eadc9aef8356362216032013a4f268f50242746c50a0b44",
+  "expected_cases": [
+    "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
+    "InitializationThroughCSharpImplementationPassesCoreConformance",
+    "NormalizedScenario(\"normalized.minus-0.2\")",
+    "NormalizedScenario(\"normalized.0.0\")",
+    "NormalizedScenario(\"normalized.0.37\")",
+    "NormalizedScenario(\"normalized.0.5\")",
+    "NormalizedScenario(\"normalized.1.0\")",
+    "NormalizedScenario(\"normalized.1.2\")",
+    "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+  ]
+}

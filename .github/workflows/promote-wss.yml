@@ -25,11 +25,11 @@ jobs:
           fetch-depth: 0
           lfs: true
           persist-credentials: false
-      - name: Fail closed while baseline and Personal hosted licensing are unresolved
+      - name: Require candidate-promotion baseline approval
         shell: pwsh
         run: |
           $config = Get-Content source/.github/unity-ci.json -Raw | ConvertFrom-Json
-          throw 'Unity promotion is blocked: publish/verify dev baseline and establish a supported hosted Unity Personal route. No write token or preflight dispatch is authorized by a skipped test.'
+          if (!$config.baseline_ready) { throw 'Candidate-promotion baseline approval remains pending; ordinary .NET CI does not authorize promotion.' }
       - uses: actions/create-github-app-token@v2
         id: read
         with:

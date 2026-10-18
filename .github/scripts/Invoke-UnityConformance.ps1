@@ -15,6 +15,7 @@ param(
 )
 . "$PSScriptRoot/UnityContract.ps1"
 $config=Read-UnityConfig $ConfigPath
+& "$PSScriptRoot/Assert-UnityPrerequisites.ps1" -ConfigPath $ConfigPath -UnityExe $UnityExe
 if (Test-Path -LiteralPath $OutputRoot) { throw 'OutputRoot must be new.' }
 Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
 Assert-UnitySource $WrapperRoot $WrapperSha

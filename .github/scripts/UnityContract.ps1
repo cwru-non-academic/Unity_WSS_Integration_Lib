@@ -89,17 +89,18 @@ function Read-UnityConfig([string]$Path) {
     if ($config.fixture_sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Missing fixture digest.' }
     $config
 }
-function Assert-UnityResults([string]$Path, $Config) {
+function Assert-UnityResults([string]$Path, $Config, [switch]$DotNet) {
     # Disable DTD/entity resolution: results may originate from proposed source.
     $settings = [Xml.XmlReaderSettings]::new(); $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit; $settings.XmlResolver = $null
     $reader = [Xml.XmlReader]::Create($Path,$settings)
     try { $xml=[Xml.XmlDocument]::new(); $xml.XmlResolver=$null; $xml.Load($reader) } finally { $reader.Dispose() }
     $run=$xml.DocumentElement; $cases=@($xml.SelectNodes('//test-case'))
-    if ($run.Name -cne 'test-run' -or $run.GetAttribute('result') -cne 'Passed' -or
+    if ($run.get_Name() -cne 'test-run' -or $run.GetAttribute('result') -cne 'Passed' -or
         $run.GetAttribute('testcasecount') -cne '10' -or $run.GetAttribute('total') -cne '10' -or
         $run.GetAttribute('passed') -cne '10' -or $cases.Count -ne 10) { throw 'All ten canonical cases must be discovered, executed and passed.' }
     foreach ($attribute in @('failed','skipped','inconclusive')) { if ($run.GetAttribute($attribute) -cne '0') { throw "Nonzero or absent $attribute count." } }
-    if (@(Compare-Object @($Config.expected_cases) @($cases | ForEach-Object { $_.GetAttribute('name') }) -CaseSensitive).Count -ne 0 -or
+    $expected=if ($DotNet) { @($Config.dotnet_expected_cases) } else { @($Config.expected_cases) }
+    if ($expected.Count -ne 10 -or @(Compare-Object $expected @($cases | ForEach-Object { $_.GetAttribute('name') }) -CaseSensitive).Count -ne 0 -or
         @($cases | Where-Object { $_.GetAttribute('result') -cne 'Passed' }).Count -gt 0) { throw 'Missing/duplicate/unexpected/unsuccessful canonical cases.' }
 }
 function Assert-UnitySource([string]$Root,[string]$Sha,[switch]$IgnoreSubmodule) {

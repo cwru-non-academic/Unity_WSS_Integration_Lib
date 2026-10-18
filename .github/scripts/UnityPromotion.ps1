@@ -96,19 +96,19 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
     if (Test-Path -LiteralPath $Root) { throw 'Evidence download destination must be new.' }
     $null=Invoke-UnityGh @('run','download',$RunId,'--repo',$Repository,'--name','unity-preflight-evidence','--dir',$Root)
     $files=@(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
-    if (@(Compare-Object @('evidence.json','results.xml','unity.log','projection.json') $files -CaseSensitive).Count -ne 0) { throw 'Unexpected/incomplete preflight artifact.' }
+    if (@(Compare-Object @('evidence.json','results.xml','dotnet.log','projection.json') $files -CaseSensitive).Count -ne 0) { throw 'Unexpected/incomplete preflight artifact.' }
     $e=Get-Content -LiteralPath (Join-Path $Root 'evidence.json') -Raw | ConvertFrom-Json
     Assert-UnitySameCandidate $e.candidate $Candidate
     $expectedRunSha=if ($Role -ceq 'wrapper') { $e.wrapper_sha } else { $e.gui_sha }
-    if ($e.schema -cne 'wss-unity-evidence/v1' -or $e.role -cne $Role -or $e.mode -cne 'candidate' -or $e.run_repository -cne $Repository -or
+    if ($e.schema -cne 'wss-dotnet-evidence/v1' -or $e.execution -cne 'dotnet' -or $e.unity_executed -cne $false -or $e.role -cne $Role -or $e.mode -cne 'candidate' -or $e.run_repository -cne $Repository -or
         [string]$e.run_id -cne $RunId -or $e.run_sha -cne $SourceSha -or $expectedRunSha -cne $SourceSha -or
         $e.fixture_sha -cne $Config.fixture_commit -or $e.fixture_sha256 -cne $Config.fixture_sha256 -or
-        $e.editor -cne $Config.editor -or $e.revision -cne $Config.revision -or $e.test_framework -cne $Config.test_framework -or
-        $e.discovered -ne 10 -or $e.executed -ne 10 -or $e.passed -ne 10 -or $e.failed -ne 0 -or $e.skipped -ne 0 -or $e.assertions -ne 18) { throw 'Invalid runtime/source/fixture evidence.' }
-    foreach ($pair in @(@('results.xml','results_sha256'),@('unity.log','log_sha256'))) {
+        $e.sdk -cne $Config.dotnet_sdk -or $e.target_framework -cne 'net9.0' -or $e.test_framework -cne 'NUnit 3.14.0' -or
+        $e.discovered -ne 10 -or $e.executed -ne 10 -or $e.passed -ne 10 -or $e.failed -ne 0 -or $e.skipped -ne 0 -or $e.assertion_expressions -ne 18) { throw 'Invalid runtime/source/fixture evidence.' }
+    foreach ($pair in @(@('results.xml','results_sha256'),@('dotnet.log','log_sha256'))) {
         if ((Get-FileHash -LiteralPath (Join-Path $Root $pair[0])).Hash.ToLowerInvariant() -cne $e.($pair[1])) { throw 'Evidence content hash mismatch.' }
     }
-    Assert-UnityResults (Join-Path $Root 'results.xml') $Config
+    Assert-UnityResults (Join-Path $Root 'results.xml') $Config -DotNet
     $projection=Get-Content -LiteralPath (Join-Path $Root 'projection.json') -Raw | ConvertFrom-Json
     Assert-UnitySameCandidate $projection.candidate $Candidate
     if ($projection.schema -cne 'wss-unity-projection/v1' -or (Get-UnityProjectionDigest $projection.files) -cne $e.projection_sha256 -or

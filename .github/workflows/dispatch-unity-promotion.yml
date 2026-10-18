@@ -25,9 +25,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Keep promotion blocked until hosted runtime prerequisites are resolved
+      - name: Require candidate-promotion baseline approval
         shell: pwsh
-        run: throw 'Unity Personal hosted conformance is not provisioned; do not dispatch downstream promotion.'
+        run: |
+          $config = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
+          if (!$config.baseline_ready) { throw 'Candidate-promotion baseline approval remains pending.' }
       - uses: actions/create-github-app-token@v2
         id: read
         with:

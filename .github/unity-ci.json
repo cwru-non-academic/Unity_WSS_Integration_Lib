@@ -21,5 +21,19 @@
     "NormalizedScenario(\"normalized.1.2\")",
     "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
     "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+  ],
+  "automated_execution": "dotnet",
+  "dotnet_sdk": "9.0.316",
+  "dotnet_expected_cases": [
+    "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
+    "InitializationThroughCSharpImplementationPassesCoreConformance",
+    "normalized.minus-0.2",
+    "normalized.0.0",
+    "normalized.0.37",
+    "normalized.0.5",
+    "normalized.1.0",
+    "normalized.1.2",
+    "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
   ]
 }

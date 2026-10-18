@@ -1,0 +1,5 @@
+# Unity regenerates metadata for compiled plugin artifacts. Keep authored
+# script and folder metadata tracked so serialized Unity references stay stable.
+/Plugins/WSS_Core_Interface/*.dll.meta
+/Plugins/WSS_Core_Interface/*.pdb.meta
+/Plugins/WSS_Core_Interface/*.xml.meta

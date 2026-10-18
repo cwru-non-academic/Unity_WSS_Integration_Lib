@@ -7,17 +7,20 @@ using UnityEngine;
 /// <summary>
 /// Simple Unity helper that scans available serial ports and allows selecting
 /// one from a UI dropdown to force the COM port used by the stimulation script.
-/// Attach this to a separate GameObject and wire the <see cref="selectPort"/>
+/// Attach this to a separate GameObject and wire the <c>selectPort()</c>
 /// method to a UI event (e.g., button click) to apply the chosen port.
 /// </summary>
+/// <remarks>
+/// Usage:
+/// - Place this script on a separate GameObject (not a child of the stimulation object).
+/// - Assign <see cref="stim"/> and <see cref="serialList"/> in the inspector.
+/// - Ensure the stimulation script has <c>forcePort</c> enabled so the dropdown selection is used.
+///
+/// Enabling this component temporarily disables <see cref="stim"/> while scanning ports so the
+/// stimulation wrapper does not hold an outdated connection open during selection.
+/// </remarks>
 public class portScanner : MonoBehaviour
 {
-    // Usage Instructions:
-    // - Place this script on a separate empty GameObject (do not make it a child of the object with the stimulation script).
-    // - Attach the stimulation script and the dropdown used for selecting the port.
-    // - Connect the selectPort() method to a button or transition trigger in the UI.
-    // -  Make sure the stimulation script's ForcePort boolean is set to true. The COM Port variable is irrelevant and will be overridden by the dropdown selection.
-
     /// <summary>
     /// Reference to the <see cref="Stimulation"/> component whose <c>comPort</c>
     /// will be set based on dropdown selection.
@@ -29,9 +32,9 @@ public class portScanner : MonoBehaviour
     [SerializeField] private TMP_Dropdown serialList;
 
     private string selectedPort = "";
-    // Start is called before the first frame update
+
     /// <summary>
-    /// Unity Start hook. No-op; port list is generated on enable.
+    /// Unity Start hook. No-op; the port list is generated on enable.
     /// </summary>
     void Start()
     {
@@ -48,7 +51,6 @@ public class portScanner : MonoBehaviour
         generatePortList();
     }
 
-    // Update is called once per frame
     /// <summary>
     /// Unity Update hook. No-op; present for completeness.
     /// </summary>
@@ -92,6 +94,10 @@ public class portScanner : MonoBehaviour
     /// <summary>
     /// Applies the selected COM port to the stimulation script and re-enables it.
     /// </summary>
+    /// <remarks>
+    /// If the dropdown contains only the <c>empty</c> placeholder, this method leaves the stimulation
+    /// component disabled and does not change its configured port.
+    /// </remarks>
     public void selectPort()
     {
         selectedPort = serialList.options[serialList.value].text;

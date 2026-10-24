@@ -1,0 +1,152 @@
+name: WSS conformance validation
+on:
+  workflow_call:
+    inputs:
+      role: {type: string, required: true}
+      mode: {type: string, default: committed}
+      wrapper_sha: {type: string, default: ''}
+      gui_sha: {type: string, default: ''}
+      candidate_json: {type: string, default: ''}
+    secrets:
+      WSS_GITHUB_APP_PRIVATE_KEY: {required: false}
+permissions:
+  contents: read
+jobs:
+  prerequisites:
+    name: Resolve preflight inputs
+    runs-on: windows-2022
+    outputs:
+      wrapper: ${{ steps.sources.outputs.wrapper }}
+      gui: ${{ steps.sources.outputs.gui }}
+      fixture: ${{ steps.sources.outputs.fixture }}
+      sdk: ${{ steps.sources.outputs.sdk }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate exact source and execution contract
+        id: sources
+        shell: pwsh
+        env:
+          ROLE: ${{ inputs.role }}
+          MODE: ${{ inputs.mode }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          GUI_SHA: ${{ inputs.gui_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $config = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
+          if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
+          if ($env:ROLE -cnotin @('wrapper','gui') -or $env:MODE -cnotin @('candidate','committed')) { throw 'Invalid validation role/mode.' }
+          $wrapper = $env:WRAPPER_SHA
+          $gui = $env:GUI_SHA
+          if ($env:MODE -ceq 'candidate') {
+            if (!$config.baseline_ready) { throw 'Candidate promotion baseline approval remains pending; ordinary committed-state .NET CI is separate.' }
+            if ($env:GITHUB_REF -cne 'refs/heads/dev' -or $wrapper -cnotmatch '^[0-9a-f]{40}$' -or $gui -cnotmatch '^[0-9a-f]{40}$') { throw 'Candidate preflight requires exact dev source SHAs.' }
+          } elseif ($env:ROLE -ceq 'gui') {
+            $entry = git ls-tree HEAD -- Assets/SubModules/WSSInterfacingModule
+            if ($LASTEXITCODE -ne 0 -or $entry -cnotmatch '^160000 commit ([0-9a-f]{40})\s+Assets/SubModules/WSSInterfacingModule$') { throw 'Exact wrapper gitlink is required.' }
+            $wrapper = $Matches[1]
+          }
+          $ownSha = if ($env:ROLE -ceq 'wrapper') { $wrapper } else { $gui }
+          if ($ownSha -cne $env:GITHUB_SHA -or $wrapper -cnotmatch '^[0-9a-f]{40}$' -or ($gui -and $gui -cnotmatch '^[0-9a-f]{40}$') -or $config.fixture_commit -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid or raced immutable source.' }
+          "wrapper=$wrapper" >> $env:GITHUB_OUTPUT
+          "gui=$gui" >> $env:GITHUB_OUTPUT
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
+          "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+  conformance:
+    needs: prerequisites
+    name: ${{ inputs.role == 'wrapper' && (inputs.mode == 'candidate' && 'Preflight compatibility (Windows)' || 'Integration compatibility (Windows)') || 'GUI platform compatibility (Windows)' }}
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ needs.prerequisites.outputs.sdk }}
+      - uses: actions/create-github-app-token@v2
+        if: inputs.mode == 'candidate'
+        id: read
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: WSSCore
+          permission-contents: read
+          permission-actions: read
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ needs.prerequisites.outputs.wrapper }}
+          path: wrapper
+          lfs: true
+          token: ${{ github.token }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        if: needs.prerequisites.outputs.gui != ''
+        with:
+          repository: cwru-non-academic/GUI_Unity_WSS_Application
+          ref: ${{ needs.prerequisites.outputs.gui }}
+          path: gui
+          token: ${{ github.token }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: ${{ needs.prerequisites.outputs.fixture }}
+          path: fixture
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Resolve exact producer candidate
+        if: inputs.mode == 'candidate'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          CANDIDATE_JSON: ${{ inputs.candidate_json }}
+        run: |
+          . ./wrapper/.github/scripts/UnityPromotion.ps1
+          $c = $env:CANDIDATE_JSON | ConvertFrom-Json
+          Assert-UnityProducer $c
+          ./wrapper/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+      - name: Execute canonical cases through shared production wrapper source
+        shell: pwsh
+        env:
+          MODE: ${{ inputs.mode }}
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ needs.prerequisites.outputs.wrapper }}
+          GUI_SHA: ${{ needs.prerequisites.outputs.gui }}
+        run: |
+          $options = @{
+            WrapperRoot = "$env:GITHUB_WORKSPACE/wrapper"
+            FixtureRoot = "$env:GITHUB_WORKSPACE/fixture"
+            WrapperSha = $env:WRAPPER_SHA
+            ConfigPath = "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json"
+            OutputRoot = "$env:RUNNER_TEMP/conformance-results"
+            Mode = $env:MODE
+            Role = $env:ROLE
+          }
+          if ($env:GUI_SHA) { $options.GuiRoot = "$env:GITHUB_WORKSPACE/gui"; $options.GuiSha = $env:GUI_SHA }
+          if ($env:MODE -ceq 'candidate') {
+            $options.ArtifactRoot = "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal"
+            $options.CandidatePath = "$env:RUNNER_TEMP/resolved/candidate.json"
+          }
+          ./wrapper/.github/scripts/Invoke-DotNetConformance.ps1 @options
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ${{ inputs.mode == 'candidate' && 'unity-preflight-evidence' || 'dotnet-conformance-evidence' }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/conformance-results/evidence.json
+            ${{ runner.temp }}/conformance-results/results.xml
+            ${{ runner.temp }}/conformance-results/dotnet.log
+            ${{ runner.temp }}/conformance-results/projection.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dotnet-diagnostics
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/conformance-results/*.log
+            ${{ runner.temp }}/conformance-results/*.xml
+            ${{ runner.temp }}/conformance-results/harness/conformance-inputs.json

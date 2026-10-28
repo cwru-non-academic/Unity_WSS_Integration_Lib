@@ -21,7 +21,7 @@ if ($role -ceq 'wrapper') {
     Assert-UnityProjection (Join-Path $WorkRoot 'projection') $projection
     if ($projection.projection_sha256 -cne $approval.projection_sha256) { throw 'Staged projection differs from preflight.' }
     foreach ($source in $UnityProjectionFiles) {
-        $name=[IO.Path]::GetFileName($source)
+        $name=Get-UnityProjectionPath $source
         Copy-Item -LiteralPath (Join-Path $WorkRoot "projection/$name") -Destination (Join-Path $RepositoryRoot "$UnityPluginPath/$name")
         # Importer metadata is part of the proof, but remains the accepted baseline byte-for-byte.
     }

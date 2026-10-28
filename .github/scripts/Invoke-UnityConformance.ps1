@@ -21,7 +21,7 @@ Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
 Assert-UnitySource $WrapperRoot $WrapperSha
 Assert-UnitySource $FixtureRoot $config.fixture_commit
 $fixturePath=Join-Path $FixtureRoot 'tests/Wss.CSharpImplementation.Tests/StimulationControllerConformanceTests.cs'
-if ((Get-FileHash -LiteralPath $fixturePath).Hash.ToLowerInvariant() -cne $config.fixture_sha256) { throw 'Canonical fixture hash mismatch.' }
+if ((Get-UnityFixtureHash $FixtureRoot) -cne $config.fixture_sha256) { throw 'Canonical fixture hash mismatch.' }
 if ((Get-Item -LiteralPath $UnityExe).VersionInfo.ProductVersion -notlike "$($config.editor)*") { throw 'Wrong Unity Editor version.' }
 if (@(Get-Process Unity -ErrorAction SilentlyContinue).Count -gt 0) { throw 'Another Unity Editor is running; no shared process/project is reused.' }
 if (!(Get-Content -LiteralPath (Join-Path $GuiRoot 'ProjectSettings/ProjectVersion.txt') -Raw).Contains("m_EditorVersionWithRevision: $($config.editor) ($($config.revision))")) { throw 'Project Editor/revision mismatch.' }

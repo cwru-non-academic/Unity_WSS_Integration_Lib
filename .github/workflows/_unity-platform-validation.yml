@@ -1,0 +1,88 @@
+name: WSS candidate platform validation
+on:
+  workflow_call:
+    inputs:
+      role: {type: string, required: true}
+      wrapper_sha: {type: string, required: true}
+      gui_sha: {type: string, required: true}
+      fixture_sha: {type: string, required: true}
+      sdk: {type: string, required: true}
+      candidate_json: {type: string, required: true}
+    secrets:
+      WSS_GITHUB_APP_PRIVATE_KEY: {required: true}
+permissions:
+  contents: read
+jobs:
+  platform-compatibility:
+    name: Preflight platform compatibility (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-2022, label: Windows}
+          - {os: ubuntu-latest, label: Ubuntu}
+          - {os: macos-latest, label: macOS}
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.sdk }}
+      - uses: actions/create-github-app-token@v2
+        id: read
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: WSSCore
+          permission-contents: read
+          permission-actions: read
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ inputs.wrapper_sha }}
+          path: wrapper
+          lfs: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/GUI_Unity_WSS_Application
+          ref: ${{ inputs.gui_sha }}
+          path: gui
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: ${{ inputs.fixture_sha }}
+          path: fixture
+          persist-credentials: false
+      - name: Resolve the exact producer tuple independently on this host
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          CANDIDATE_JSON: ${{ inputs.candidate_json }}
+        run: |
+          . ./wrapper/.github/scripts/UnityPromotion.ps1
+          $c = $env:CANDIDATE_JSON | ConvertFrom-Json
+          Assert-UnityProducer $c
+          ./wrapper/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+      - name: Verify candidate packaging, host transport selection and canonical production commands
+        shell: pwsh
+        env:
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          GUI_SHA: ${{ inputs.gui_sha }}
+        run: |
+          ./wrapper/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha $env:GUI_SHA -Role $env:ROLE -ConfigPath "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results" -Mode candidate -ArtifactRoot "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal" -CandidatePath "$env:RUNNER_TEMP/resolved/candidate.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unity-preflight-platform-${{ inputs.role }}-${{ matrix.label }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/platform-results/*.json
+            ${{ runner.temp }}/platform-results/*.log
+            ${{ runner.temp }}/platform-results/conformance/*.json
+            ${{ runner.temp }}/platform-results/conformance/*.xml
+            ${{ runner.temp }}/platform-results/conformance/*.log

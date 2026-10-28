@@ -53,9 +53,22 @@ jobs:
           "gui=$gui" >> $env:GITHUB_OUTPUT
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+  candidate-platforms:
+    if: inputs.mode == 'candidate'
+    needs: prerequisites
+    uses: ./.github/workflows/_unity-platform-validation.yml
+    with:
+      role: ${{ inputs.role }}
+      wrapper_sha: ${{ needs.prerequisites.outputs.wrapper }}
+      gui_sha: ${{ needs.prerequisites.outputs.gui }}
+      fixture_sha: ${{ needs.prerequisites.outputs.fixture }}
+      sdk: ${{ needs.prerequisites.outputs.sdk }}
+      candidate_json: ${{ inputs.candidate_json }}
+    secrets:
+      WSS_GITHUB_APP_PRIVATE_KEY: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
   conformance:
     needs: prerequisites
-    name: ${{ inputs.role == 'wrapper' && (inputs.mode == 'candidate' && 'Preflight compatibility (Windows)' || 'Integration compatibility (Windows)') || 'GUI platform compatibility (Windows)' }}
+    name: Shared production conformance (.NET)
     runs-on: windows-2022
     timeout-minutes: 20
     steps:

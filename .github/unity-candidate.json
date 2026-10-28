@@ -8,7 +8,7 @@
     "archive": "WSS-Universal-ci.zip",
     "sha256": "3bc303096594978fa77e95cd80901a8fb72d26c42a7408c38c8668563b6f1a7e"
   },
-  "projection_sha256": "26b88080709160e66ac7bf8c0e4d444fb4ce4984ef3bb565fee30eca59134e1a",
+  "projection_sha256": "60e4f2aabe4e4376724e6fb2f3711cf7468be4f3c86ca1bfd6672a69a0dedd98",
   "files": [
     {
       "source": "WSS_Core_Interface.dll",
@@ -84,6 +84,21 @@
       "source": "backends/windows/WssBleWindows.dll",
       "sha256": "a31a0756b8e63027f39a3dfec02e392de79de90d832a60e8f567e40a4cd7a8ba",
       "meta_sha256": "ab6f026e60f2beda899d1578fbfdf09617d6d59e4c8254366463451af8dee6a9"
+    },
+    {
+      "source": "runtimes/win/lib/net8.0/System.IO.Ports.dll",
+      "sha256": "8d6c9b2bffe01741d1b4915fe26c93ba8c2382b00ee4cf88a312a789619ef503",
+      "meta_sha256": "82c2006b58573dd9923f31fd1510b14d330ac121160e1ad1e5003dd15b5276d0"
+    },
+    {
+      "source": "runtimes/unix/lib/net8.0/System.IO.Ports.dll",
+      "sha256": "2a8a1494ac8afdd670b96674abf2d71af4177414301a426595ba9699d543a718",
+      "meta_sha256": "cad5dc48c1643f7e32872bb31b41d7047a0bca23d40a79102e290c0e84114fa0"
+    },
+    {
+      "source": "runtimes/linux-x64/native/libSystem.IO.Ports.Native.so",
+      "sha256": "2d22114a6ad3abac9df4212548561cf829e0563c1425c6f669a379d1a61d5f06",
+      "meta_sha256": "e122f0e73f22dc0fcd73608b900b6611a6f85e30f91306129a87a982f1591913"
     }
   ]
 }

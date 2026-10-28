@@ -8,7 +8,14 @@ $UnityPluginPath = 'Plugins/WSS_Core_Interface'
 $UnityProjectionFiles = @($WssUniversalFiles | Where-Object { $_ -notmatch '/' }) + @(
     'backends/windows/WSS.Transport.BLE.Windows.dll',
     'backends/windows/WSS.Transport.BLE.Windows.Native.dll',
-    'backends/windows/WssBleWindows.dll')
+    'backends/windows/WssBleWindows.dll') + @($WssUniversalFiles | Where-Object { $_ -like 'runtimes/*' })
+
+function Get-UnityProjectionPath([string]$Source) {
+    # Preserve RID paths (including duplicate Ports filenames); the established
+    # Unity Windows BLE importer layout remains flat.
+    if ($Source.StartsWith('runtimes/',[StringComparison]::Ordinal)) { return $Source }
+    [IO.Path]::GetFileName($Source)
+}
 
 function Invoke-UnityGh([string[]]$Arguments) {
     $response = & gh @Arguments
@@ -50,16 +57,17 @@ function Get-UnityProjectionDigest($Files) {
 function Assert-UnityProjection([string]$Root, $Record) {
     if ($Record.schema -cne 'wss-unity-projection/v1') { throw 'Invalid Unity projection schema.' }
     Assert-UnityCandidate $Record.candidate
-    $expected = @($UnityProjectionFiles | ForEach-Object { [IO.Path]::GetFileName($_) })
-    $actual = @(Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.dll' | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
+    $expected = @($UnityProjectionFiles | ForEach-Object { Get-UnityProjectionPath $_ })
+    $actual = @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object { $_.Extension -in @('.dll','.so') } | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
     if (@(Compare-Object $expected $actual -CaseSensitive).Count -ne 0 -or $Record.files.Count -ne $expected.Count) { throw 'Wrong Unity DLL inventory; stale fallback/extra DLLs are forbidden.' }
     if (@(Compare-Object $UnityProjectionFiles @($Record.files.source) -CaseSensitive).Count -ne 0) { throw 'Wrong projection source inventory.' }
     foreach ($item in $Record.files) {
-        $path = Join-Path $Root ([IO.Path]::GetFileName($item.source))
+        $path = Join-Path $Root (Get-UnityProjectionPath $item.source)
         if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $item.sha256 -or
             (Get-UnityMetaHash ($path+'.meta')) -cne $item.meta_sha256) { throw "Projection bytes/importer mismatch: $($item.source)" }
         $meta = [IO.File]::ReadAllText($path+'.meta')
         if ($item.source -in @('Newtonsoft.Json.dll','System.Numerics.Vectors.dll') -and $meta -match 'enabled: 1') { throw 'Unity-provided JSON/Vectors payload copies must have disabled importers.' }
+        if ($item.source -like 'runtimes/*' -and $meta -match 'enabled: 1') { throw '.NET runtime assets must not be imported into Unity Mono/IL2CPP.' }
     }
     if ((Get-UnityProjectionDigest $Record.files) -cne $Record.projection_sha256) { throw 'Projection digest mismatch.' }
 }
@@ -71,7 +79,8 @@ function New-UnityProjection([string]$ArtifactRoot, [string]$WrapperRoot, [strin
     New-Item -ItemType Directory -Path $Destination | Out-Null
     $files = @()
     foreach ($source in $UnityProjectionFiles) {
-        $name = [IO.Path]::GetFileName($source)
+        $name = Get-UnityProjectionPath $source
+        $null = New-Item -ItemType Directory -Path (Split-Path (Join-Path $Destination $name)) -Force
         Copy-Item -LiteralPath (Join-Path $ArtifactRoot $source) -Destination (Join-Path $Destination $name)
         Copy-Item -LiteralPath (Join-Path $WrapperRoot "$UnityPluginPath/$name.meta") -Destination (Join-Path $Destination ($name+'.meta'))
         $files += [ordered]@{ source=$source; sha256=(Get-FileHash -LiteralPath (Join-Path $Destination $name) -Algorithm SHA256).Hash.ToLowerInvariant(); meta_sha256=(Get-UnityMetaHash (Join-Path $Destination ($name+'.meta'))) }
@@ -111,7 +120,7 @@ function Assert-UnitySource([string]$Root,[string]$Sha,[switch]$IgnoreSubmodule)
     if (@(Invoke-UnityGit $Root $statusArguments).Count -ne 0) { throw 'Source checkout must be clean before staging the disposable harness.' }
 }
 function Get-UnityAllowedWrapperPaths {
-    @($UnityProjectionFiles | ForEach-Object { $name=[IO.Path]::GetFileName($_); "$UnityPluginPath/$name"; "$UnityPluginPath/$name.meta" }) + @('.github/unity-candidate.json')
+    @($UnityProjectionFiles | ForEach-Object { $name=Get-UnityProjectionPath $_; "$UnityPluginPath/$name"; "$UnityPluginPath/$name.meta" }) + @('.github/unity-candidate.json')
 }
 function Assert-UnityDiff([string[]]$Paths,[string[]]$Allowed) {
     if ($Paths.Count -eq 0 -or @($Paths | Where-Object { $_ -cnotin $Allowed }).Count -gt 0) { throw 'Empty or out-of-scope promotion diff.' }

@@ -23,7 +23,7 @@ if ($Role -ceq 'gui' -or $Mode -ceq 'candidate') {
     Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
 }
 $fixturePath=Join-Path $FixtureRoot 'tests/Wss.CSharpImplementation.Tests/StimulationControllerConformanceTests.cs'
-if ((Get-FileHash -LiteralPath $fixturePath).Hash.ToLowerInvariant() -cne $config.fixture_sha256) { throw 'Canonical fixture hash mismatch.' }
+if ((Get-UnityFixtureHash $FixtureRoot) -cne $config.fixture_sha256) { throw 'Canonical fixture hash mismatch.' }
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 if ($Mode -ceq 'candidate') {
     if (!$ArtifactRoot -or !$CandidatePath) { throw 'Candidate mode requires the resolver output; no fallback.' }

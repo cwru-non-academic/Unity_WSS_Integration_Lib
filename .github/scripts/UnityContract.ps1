@@ -27,6 +27,25 @@ function Invoke-UnityGit([string]$Root, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Git operation failed: $($Arguments[0])" }
     $response
 }
+function Get-UnityFixtureHash([string]$Root) {
+    # Git owns checkout EOLs. Hash the pinned blob, not OS-dependent worktree
+    # bytes, and reject any worktree/index change to the canonical fixture.
+    $relative='tests/Wss.CSharpImplementation.Tests/StimulationControllerConformanceTests.cs'
+    $null=Invoke-UnityGit $Root @('diff','--exit-code','HEAD','--',$relative)
+    $start=[Diagnostics.ProcessStartInfo]::new((Get-Command git).Source)
+    foreach ($argument in @('-C',$Root,'cat-file','blob',"HEAD:$relative")) { $start.ArgumentList.Add($argument) }
+    $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+    $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+    $process=[Diagnostics.Process]::Start($start)
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try {
+        $hash=[Convert]::ToHexString($sha.ComputeHash($process.StandardOutput.BaseStream)).ToLowerInvariant()
+        $errorText=$process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) { throw "Canonical Git fixture could not be read: $errorText" }
+        $hash
+    } finally { $sha.Dispose(); $process.Dispose() }
+}
 function Assert-UnitySha([string]$Sha) {
     if ($Sha -cnotmatch '^[0-9a-f]{40}$') { throw 'A full lowercase source SHA is required.' }
 }

@@ -14,8 +14,9 @@ if ($target.StartsWith($wrapper+[IO.Path]::DirectorySeparatorChar,[StringCompari
     throw 'Prepare the disposable harness outside source checkouts.'
 }
 $fixturePath=Join-Path $CSharpIntegrationRoot 'tests/Wss.CSharpImplementation.Tests/StimulationControllerConformanceTests.cs'
-$fixtureHash=(Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($fixtureHash -cne '1cdfb9448a1776011eadc9aef8356362216032013a4f268f50242746c50a0b44') { throw 'Canonical fixture digest changed.' }
+. (Join-Path $wrapper '.github/scripts/UnityContract.ps1')
+$fixtureHash=Get-UnityFixtureHash $CSharpIntegrationRoot
+if ($fixtureHash -cne 'f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2') { throw 'Canonical fixture digest changed.' }
 $canonical=[IO.File]::ReadAllText($fixturePath)
 $factory='(?s)private static StimulationController CreateController\(string fixtureDirectory\) =>\s*new\(new StimulationOptions\s*\{\s*ConfigPath = fixtureDirectory,\s*Transport = StimulationTransportKind.Conformance,\s*MaxSetupTries = 1,\s*TickIntervalMs = 1\s*\}\);'
 if ([regex]::Matches($canonical,$factory).Count -ne 1) { throw 'Canonical controller factory changed.' }

@@ -103,6 +103,10 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
     $requiredName=if ($Role -ceq 'wrapper') { 'Preflight behavioral tests' } else { 'GUI general conformance' }
     $required=@($pages | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq $requiredName })
     if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw 'Required candidate acceptance job missing/skipped/failed.' }
+    foreach ($platform in @('Windows','Ubuntu','macOS')) {
+        $matching=@($pages | ForEach-Object { $_.jobs } | Where-Object { ($_.name -split ' / ')[-1] -ceq "Preflight platform compatibility ($platform)" })
+        if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Candidate platform validation missing/skipped/failed: $platform" }
+    }
     if (Test-Path -LiteralPath $Root) { throw 'Evidence download destination must be new.' }
     $null=Invoke-UnityGh @('run','download',$RunId,'--repo',$Repository,'--name','unity-preflight-evidence','--dir',$Root)
     $files=@(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
@@ -156,12 +160,12 @@ function Assert-UnityRemoteProjection([string]$Sha,$Record) {
         @(Compare-Object $UnityProjectionFiles @($Record.files.source) -CaseSensitive).Count) { throw 'Invalid merged projection inventory/digest.' }
     $tree=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/git/trees/${Sha}?recursive=1") | ConvertFrom-Json
     if ($tree.truncated) { throw 'Merged wrapper tree response is truncated.' }
-    $dlls=@($tree.tree | Where-Object { $_.path.StartsWith($UnityPluginPath+'/',[StringComparison]::Ordinal) -and $_.path.EndsWith('.dll',[StringComparison]::Ordinal) } | ForEach-Object { $_.path })
-    $expected=@($UnityProjectionFiles | ForEach-Object { "$UnityPluginPath/$([IO.Path]::GetFileName($_))" })
+    $dlls=@($tree.tree | Where-Object { $_.path.StartsWith($UnityPluginPath+'/',[StringComparison]::Ordinal) -and ($_.path.EndsWith('.dll',[StringComparison]::Ordinal) -or $_.path.EndsWith('.so',[StringComparison]::Ordinal)) } | ForEach-Object { $_.path })
+    $expected=@($UnityProjectionFiles | ForEach-Object { "$UnityPluginPath/$(Get-UnityProjectionPath $_)" })
     if (@(Compare-Object $expected $dlls -CaseSensitive).Count) { throw 'Merged wrapper has extra/missing payload DLLs.' }
     foreach ($file in $Record.files) {
         foreach ($suffix in @('','.meta')) {
-            $path="$UnityPluginPath/$([IO.Path]::GetFileName($file.source))$suffix"
+            $path="$UnityPluginPath/$(Get-UnityProjectionPath $file.source)$suffix"
             $entries=@($tree.tree | Where-Object { $_.path -ceq $path -and $_.type -ceq 'blob' })
             if ($entries.Count -ne 1) { throw "Merged payload path missing/ambiguous: $path" }
             $blob=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/git/blobs/$($entries[0].sha)") | ConvertFrom-Json
@@ -196,6 +200,10 @@ function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     $jobs=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityWrapperRepository/actions/runs/$($runs[0].id)/jobs?per_page=100") | ConvertFrom-Json
     $required=@($jobs | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq 'Integration behavioral tests' })
     if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw 'Normal committed-state acceptance missing/skipped/failed.' }
+    foreach ($platform in @('Windows','Ubuntu','macOS')) {
+        $matching=@($jobs | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq "Integration compatibility ($platform)" })
+        if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Normal committed-state platform validation missing/skipped/failed: $platform" }
+    }
     $content=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/contents/.github/unity-candidate.json?ref=$Sha") | ConvertFrom-Json
     $record=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($content.content)) | ConvertFrom-Json
     Assert-UnitySameCandidate $record.candidate $Approval.candidate

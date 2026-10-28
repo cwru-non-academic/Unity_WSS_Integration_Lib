@@ -6,6 +6,21 @@ All documentation about the API and other implementations can be found in [GitHu
 ## Unity Requirements
 Change NET framework 2.1 to NET Framework within Project settings > player > other settings > config.
 
+## CI checks
+
+Pull requests and pushes to `dev` and `main` expose the same separate contexts as the C# integration:
+
+- `Integration behavioral tests`
+- `Integration compatibility (Windows)`
+- `Integration compatibility (Ubuntu)`
+- `Integration compatibility (macOS)`
+
+Behavioral validation runs the pinned C# canonical fixture through the shared production command/stack source: ten cases and eighteen unchanged assertion expressions. Each platform job additionally publishes a disposable .NET consumer, verifies every projected payload byte in build and publish output, and compiles the unmodified `WssTransportSupport` selector with that host's Unity platform symbol. Serial construction must load the exact OS-specific Ports runtime. Windows BLE checks backend loading and production native exports without scanning, connecting, or stimulating. Ubuntu/macOS verify the selector's explicit unsupported BLE exception; Linux BLE support in Core does not enable it in the Unity selector.
+
+These checks run on .NET 9, **not the Unity engine**. A throwing shim supplies only the selector's unused Unity logging methods. They do not validate scenes, UI managers, Unity Editor/Player execution, Mono/IL2CPP compatibility, or hardware. The nested `runtimes/` payload is for .NET consumers and has disabled Unity importers; shipping it does not establish Unity Serial support. Licensed Unity EditMode validation remains a distinct explicit path.
+
+Candidate preflight runs the same three platform checks against independently resolved exact producer artifacts. Promotion requires their successful completion in addition to the original canonical evidence, source, fixture, and projection gates. Platform evidence records the host and unsupported transport boundary separately from Unity execution.
+
 ## How to add a submodule to exiting project
 1. Close other software using the code solution (Unity, Visual Studio, etc)
 2. If using git desktop, open the command prompt by going to `Repository>Open in Command Prompt`

@@ -23,7 +23,7 @@ if ($Role -ceq 'gui' -or $Mode -ceq 'candidate') {
     Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
 }
 $fixturePath=Join-Path $FixtureRoot 'tests/Wss.CSharpImplementation.Tests/StimulationControllerConformanceTests.cs'
-if ((Get-FileHash -LiteralPath $fixturePath).Hash.ToLowerInvariant() -cne $config.fixture_sha256) { throw 'Canonical fixture hash mismatch.' }
+if ((Get-UnityFixtureHash $FixtureRoot) -cne $config.fixture_sha256) { throw 'Canonical fixture hash mismatch.' }
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 if ($Mode -ceq 'candidate') {
     if (!$ArtifactRoot -or !$CandidatePath) { throw 'Candidate mode requires the resolver output; no fallback.' }
@@ -46,7 +46,9 @@ $logPath=Join-Path $OutputRoot 'dotnet.log'
 $errorPath=Join-Path $OutputRoot 'dotnet-stderr.log'
 $nunit=Join-Path $OutputRoot 'nunit'
 $arguments=@('test','Wss.DotNet.Conformance.Tests.csproj','--logger','"trx;LogFileName=results.trx"','--results-directory',('"'+(Join-Path $OutputRoot 'test-results')+'"'),'--blame-hang-timeout','2m','--',('NUnit.TestOutputXml="'+$nunit+'"'))
-$process=Start-Process -FilePath (Get-Command dotnet).Source -WorkingDirectory $harness -ArgumentList $arguments -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errorPath -PassThru
+$start=@{ FilePath=(Get-Command dotnet).Source; WorkingDirectory=$harness; ArgumentList=$arguments; RedirectStandardOutput=$logPath; RedirectStandardError=$errorPath; PassThru=$true }
+if ($IsWindows) { $start.WindowStyle='Hidden' }
+$process=Start-Process @start
 if (!$process.WaitForExit($TimeoutSeconds*1000)) { $process.Kill($true); $process.WaitForExit(); throw 'Disposable .NET conformance timed out; no acceptance evidence emitted.' }
 if ((Get-Item -LiteralPath $errorPath).Length) { [IO.File]::AppendAllText($logPath,[IO.File]::ReadAllText($errorPath)) }
 Get-Content -LiteralPath $logPath | Write-Output

@@ -1,7 +1,7 @@
 name: WSS integration compatibility
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
   pull_request:
     branches: [dev, main]
   workflow_dispatch:
@@ -29,3 +29,56 @@ jobs:
         env:
           VALIDATION_RESULT: ${{ needs.validate.result }}
         run: test "$VALIDATION_RESULT" = success
+
+  platform-compatibility:
+    name: Integration compatibility (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-2022, label: Windows}
+          - {os: ubuntu-latest, label: Ubuntu}
+          - {os: macos-latest, label: macOS}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: wrapper
+          lfs: true
+          persist-credentials: false
+      - name: Resolve pinned fixture and SDK
+        id: sources
+        shell: pwsh
+        run: |
+          . ./wrapper/.github/scripts/UnityContract.ps1
+          $config = Read-UnityConfig ./wrapper/.github/unity-ci.json
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
+          "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: ${{ steps.sources.outputs.fixture }}
+          path: fixture
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ steps.sources.outputs.sdk }}
+      - name: Verify production commands and packaged transport selection (.NET, no Unity engine)
+        shell: pwsh
+        env:
+          WRAPPER_SHA: ${{ github.sha }}
+        run: |
+          ./wrapper/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -ConfigPath "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-platform-${{ matrix.label }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/platform-results/*.json
+            ${{ runner.temp }}/platform-results/*.log
+            ${{ runner.temp }}/platform-results/conformance/*.json
+            ${{ runner.temp }}/platform-results/conformance/*.xml
+            ${{ runner.temp }}/platform-results/conformance/*.log

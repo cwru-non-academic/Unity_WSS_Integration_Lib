@@ -12,7 +12,9 @@ and mapping body, moved without rewriting it. Unity `Stimulation.cs` and the
 emulator-only `Conformance~/Stimulation.DotNet.cs` are alternate partial hosts.
 Both call `Stimulation.Stack.cs` to compose the same `WssStimulationCore` ->
 `StimParamsLayer` -> `ModelParamsLayer` stack. The .NET host cannot select a physical
-transport. There are no UnityEngine stubs.
+transport. The canonical host uses no UnityEngine stubs. The separate platform
+load probe compiles the production transport selector with a throwing shim only
+for its unused Unity logging calls; it never runs Unity lifecycle methods.
 
 Wrapper CI calls the shared `Stimulation` methods. GUI CI additionally compiles the
 actual application's `WssConformanceController.cs` forwarding methods, with its
@@ -21,7 +23,9 @@ harness; production UI managers call `Stimulation` directly and are not exercise
 
 `Conformance~/Prepare-Harness.ps1` reads the pinned canonical C# fixture from
 `CSharp_WSS_Integration_Lib` commit `7145e2307f997f703748530bf74311ef94455e98`,
-SHA256 `1cdfb9448a1776011eadc9aef8356362216032013a4f268f50242746c50a0b44`.
+Git-blob SHA256 `f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2`.
+Git controls checkout line endings; the digest identifies the immutable blob on
+all hosts, and the fixture must have no index or worktree changes.
 Only its controller factory and type alias change. Its ten cases, exact shared
 values, finite waits, evaluator calls, Assert.Multiple blocks and eighteen
 Assert.That expressions remain unchanged. Eighteen counts source expressions;
@@ -41,6 +45,10 @@ and source checkouts; Unity ignores the wrapper's `Conformance~` tooling folder.
   acceptance **Preflight behavioral tests**.
 - GUI `unity-ci.yml`: **GUI CI**, stable acceptance **GUI general conformance**.
 - GUI `wss-preflight.yml`: **WSS GUI preflight**, same GUI acceptance name.
+- Separate top-level **Integration compatibility (Windows/Ubuntu/macOS)** and
+  **GUI platform compatibility (Windows/Ubuntu/macOS)** jobs validate the package
+  and production transport support boundary on each host. Candidate preflight
+  also requires successful platform jobs for all three labels.
 
 Committed wrapper validation needs only its exact wrapper source and the pinned
 canonical fixture. GUI validation derives the exact wrapper SHA from its mode160000
@@ -48,7 +56,8 @@ gitlink. These public read-only checkouts use the existing workflow token; norma
 CI requires no GitHub App secret, Unity license or persistent local runner.
 
 `Invoke-DotNetConformance.ps1` requires clean exact source SHAs, the pinned fixture
-hash and the complete fifteen-DLL projection/hash/importer contract. It prepares a
+hash and the complete eighteen-file projection/hash/importer contract (including
+the .NET-only OS Serial runtime tree). It prepares a
 fresh disposable host, runs bounded actual dotnet test, and validates real NUnit
 XML: all ten exact case names discovered/executed/passed, zero skips/failures.
 Diagnostics retain the test output and source-input manifest. Successful runs retain

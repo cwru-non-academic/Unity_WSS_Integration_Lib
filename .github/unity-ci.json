@@ -9,7 +9,7 @@
   "test_framework": "1.1.33",
   "fixture_repository": "cwru-non-academic/CSharp_WSS_Integration_Lib",
   "fixture_commit": "7145e2307f997f703748530bf74311ef94455e98",
-  "fixture_sha256": "1cdfb9448a1776011eadc9aef8356362216032013a4f268f50242746c50a0b44",
+  "fixture_sha256": "f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2",
   "expected_cases": [
     "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
     "InitializationThroughCSharpImplementationPassesCoreConformance",

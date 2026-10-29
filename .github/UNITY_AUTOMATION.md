@@ -142,3 +142,8 @@ protocol/state behavior on .NET. It does not prove Unity importers/DLL resolutio
 Mono runtime behavior, MonoBehaviour callbacks/serialization, scene references,
 UI managers, player builds, BLE/Serial/native communication or device safety.
 Shipping releases and ruleset/security changes are outside this work.
+
+## Normalized candidate binding
+
+Successful candidate preflights additionally publish artifact `wss-candidate-provenance` with exactly one six-field `candidate.json`. The caller job depends on the entire reusable validation result, reuses the existing richer proof validator, and rejects wrong source/candidate, corrupted XML and failed suites before output. Existing projection/native/canonical artifacts and validators remain mandatory. This artifact is not an acceptance receipt or release authorization, and it does not clear an earlier failed preflight. Deploy the paired caller/writer tooling through review before activating Core reconciliation; separate release-receipt writers remain required by the shared contract.
+

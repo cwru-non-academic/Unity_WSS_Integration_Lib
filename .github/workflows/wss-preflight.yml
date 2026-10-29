@@ -33,3 +33,35 @@ jobs:
         env:
           VALIDATION_RESULT: ${{ needs.validate.result }}
         run: test "$VALIDATION_RESULT" = success
+
+  candidate-provenance:
+    name: Normalized candidate provenance
+    needs: validate
+    if: needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ inputs.wrapper_sha }}
+          path: receiver
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: unity-preflight-evidence
+          path: richer-proof
+      - name: Validate richer proof and write normalized binding
+        shell: pwsh
+        env:
+          CANDIDATE_JSON: ${{ inputs.candidate_json }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          GUI_SHA: ${{ inputs.gui_sha }}
+        run: |
+          ./receiver/.github/scripts/Test-CandidateProvenance.ps1 -ProofRoot "$env:GITHUB_WORKSPACE/richer-proof" -Scratch "$env:RUNNER_TEMP/provenance-tests"
+          ./receiver/.github/scripts/Write-CandidateProvenance.ps1 -ProofRoot "$env:GITHUB_WORKSPACE/richer-proof" -CandidateJson $env:CANDIDATE_JSON -Role wrapper -WrapperSha $env:WRAPPER_SHA -GuiSha $env:GUI_SHA -RunRepository $env:GITHUB_REPOSITORY -RunId $env:GITHUB_RUN_ID -RunSha $env:GITHUB_SHA -Destination "$env:RUNNER_TEMP/candidate-provenance"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wss-candidate-provenance
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/candidate-provenance/candidate.json

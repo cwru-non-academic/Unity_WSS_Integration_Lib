@@ -109,6 +109,9 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
     }
     if (Test-Path -LiteralPath $Root) { throw 'Evidence download destination must be new.' }
     $null=Invoke-UnityGh @('run','download',$RunId,'--repo',$Repository,'--name','unity-preflight-evidence','--dir',$Root)
+    Assert-UnityEvidenceFiles $Root $Repository $RunId $SourceSha $Role $Candidate $Config
+}
+function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,$Config) {
     $files=@(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
     if (@(Compare-Object @('evidence.json','results.xml','dotnet.log','projection.json') $files -CaseSensitive).Count -ne 0) { throw 'Unexpected/incomplete preflight artifact.' }
     $e=Get-Content -LiteralPath (Join-Path $Root 'evidence.json') -Raw | ConvertFrom-Json

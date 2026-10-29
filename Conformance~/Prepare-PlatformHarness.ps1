@@ -46,6 +46,12 @@ $project=@'
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+  <!-- The universal root Ports assembly targets Unity/netfx; .NET selects its
+       OS runtime through package metadata. Preserve both artifact boundaries. -->
+  <Target Name="PreserveCandidatePorts" AfterTargets="Build;Publish">
+    <Copy SourceFiles="payload/System.IO.Ports.dll" DestinationFiles="$(TargetDir)System.IO.Ports.dll" />
+    <Copy SourceFiles="payload/System.IO.Ports.dll" DestinationFiles="$(PublishDir)System.IO.Ports.dll" Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+  </Target>
 </Project>
 '@
 [IO.File]::WriteAllText((Join-Path $target 'Wss.PlatformCompatibility.csproj'),$project)

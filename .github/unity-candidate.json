@@ -9,7 +9,7 @@
     "archive": "WSS-Universal-ci.zip",
     "sha256": "b88d70c12b67445adb092bea8f5beebf72f89e605e2d531b52d14e6a72c501f3"
   },
-  "projection_sha256": "c130a42d8dbcb7efdc5b2fa89e798d0feca6c7b28d84074eb36237e228f18786",
+  "projection_sha256": "c531e4a23bde6706f327703f2c47c965b7471c2c7a418ee4e42286417ee02ac4",
   "files": [
     {
       "source": "WSS_Core_Interface.dll",
@@ -89,12 +89,12 @@
     {
       "source": "backends/macos/WSS.Transport.BLE.MacOS.dll",
       "sha256": "db3c3bddb41163c5d1365132dacd095e8e243ff4c9396001a50b10b2174dad97",
-      "meta_sha256": "cf5da79b5a55857bc6bf359957f281a28abf920f743b15feb0db8657be8a3b68"
+      "meta_sha256": "08ad0dbeebe0b6f0d31c50edfbb7d4dd590004c3d555460ae88cea0057b789a1"
     },
     {
       "source": "backends/macos/libwss_macos_ble.dylib",
       "sha256": "36d4ae90a80f5b9493a7f3b0a015650d03f1678ec3e6ed60eefe5b61612396c0",
-      "meta_sha256": "11d37affea18646a64c16a3863586ae53fb0e065625366468f9b9377ae383ce8"
+      "meta_sha256": "00e32d7ec40e2a0db865ee78b1358b18292bbf5e1d96c57c1725be0e42b5c2c7"
     },
     {
       "source": "runtimes/win/lib/net8.0/System.IO.Ports.dll",

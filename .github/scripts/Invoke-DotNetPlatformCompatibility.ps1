@@ -19,6 +19,7 @@ if (Test-Path -LiteralPath $OutputRoot) { throw 'Platform output root must be ne
 if (!$?) { throw 'Platform command conformance failed.' }
 $record=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/projection.json') -Raw | ConvertFrom-Json
 $projection=if ($Mode -ceq 'candidate') { Join-Path $OutputRoot 'conformance/projection' } else { Join-Path $WrapperRoot $UnityPluginPath }
+& "$PSScriptRoot/Test-UnityReceiver.ps1" -ProjectionRoot $projection -Record $record -Scratch (Join-Path $OutputRoot 'inventory-negative')
 $probe=Join-Path $OutputRoot 'probe'
 & (Join-Path $WrapperRoot 'Conformance~/Prepare-PlatformHarness.ps1') -Destination $probe -ProjectionRoot $projection
 $publish=Join-Path $OutputRoot 'publish'

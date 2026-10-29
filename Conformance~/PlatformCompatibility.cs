@@ -98,6 +98,28 @@ internal static class PlatformCompatibility
             Require(AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetName().Name == shared.GetName().Name) == 1,
                 "Duplicate transport contract assembly.");
         }
+        if (OperatingSystem.IsMacOS())
+        {
+            // Core package loading is distinct from the Unity selector's support boundary.
+            using var facade = new BleNusTransport(new BleNusTransportOptions { DeviceName = "ci-load-only" });
+            string directory = Path.Combine(AppContext.BaseDirectory, "backends", "macos");
+            Assembly backend = AppDomain.CurrentDomain.GetAssemblies().Single(a => a.GetName().Name == "WSS.Transport.BLE.MacOS");
+            Require(Path.GetFullPath(backend.Location) == Path.Combine(directory, "WSS.Transport.BLE.MacOS.dll"), "Wrong macOS backend location.");
+            Require(AssemblyLoadContext.GetLoadContext(backend) == AssemblyLoadContext.Default, "Wrong macOS load context.");
+            SameBytes(backend.Location, Path.Combine(projection, "backends", "macos", "WSS.Transport.BLE.MacOS.dll"));
+            string library = Path.Combine(directory, "libwss_macos_ble.dylib");
+            SameBytes(library, Path.Combine(projection, "backends", "macos", "libwss_macos_ble.dylib"));
+            var imports = backend.GetTypes().SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+                .Select(m => m.GetCustomAttribute<DllImportAttribute>()).Where(a => a != null && a.Value.Contains("wss_macos_ble")).ToArray();
+            Require(imports.Length > 0, "No macOS native ABI imports discovered.");
+            nint native = NativeLibrary.Load(library);
+            try
+            {
+                foreach (var import in imports) Require(NativeLibrary.GetExport(native, import.EntryPoint) != nint.Zero, "Missing macOS ABI export.");
+            }
+            finally { NativeLibrary.Free(native); }
+            Console.WriteLine("PASS: exact macOS Core backend/native ABI loaded; Unity BLE remains unsupported; no scan or connection.");
+        }
         Require(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name is "WinRT.Runtime" or "Microsoft.Windows.SDK.NET"),
             "Unexpected WinRT managed dependency.");
         Console.WriteLine("PASS: BLE " + ble);

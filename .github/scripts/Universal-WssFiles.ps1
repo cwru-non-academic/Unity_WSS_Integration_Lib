@@ -6,6 +6,7 @@ $WssUniversalFiles = @(
     'System.Security.Permissions.dll', 'System.Security.AccessControl.dll', 'System.Security.Principal.Windows.dll',
     'backends/windows/WSS.Transport.BLE.Windows.dll',
     'backends/windows/WSS.Transport.BLE.Windows.Native.dll', 'backends/windows/WssBleWindows.dll',
+    'backends/macos/WSS.Transport.BLE.MacOS.dll', 'backends/macos/libwss_macos_ble.dylib',
     'backends/linux/WSS.Transport.BLE.Linux.dll', 'backends/linux/Linux.Bluetooth.dll', 'backends/linux/Tmds.DBus.dll',
     'backends/linux/Microsoft.Bcl.AsyncInterfaces.dll', 'backends/linux/System.Reflection.Emit.dll',
     'backends/linux/System.Reflection.Emit.ILGeneration.dll', 'backends/linux/System.Threading.Tasks.Extensions.dll',

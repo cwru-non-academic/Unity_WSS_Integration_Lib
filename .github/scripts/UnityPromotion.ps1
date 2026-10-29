@@ -22,7 +22,7 @@ function Assert-UnityProducer($Candidate) {
     if ($compare.status -cnotin @('ahead','identical')) { throw 'Producer commit is not contained in Core dev.' }
     $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$($Candidate.repository)/actions/runs/$($Candidate.run_id)/jobs?per_page=100&filter=latest") | ConvertFrom-Json
     $jobs=@($pages | ForEach-Object { $_.jobs })
-    foreach ($name in @('Build and validate artifacts','Core conformance','Serial consumer (Windows)','Serial consumer (macOS)','Serial consumer (Linux)','BLE consumer (Windows)','BLE consumer (Linux)','Core consumer (Windows)','Core consumer (macOS)','Core consumer (Linux)','Start routine downstream validation')) {
+    foreach ($name in @('Build and validate artifacts','Core conformance','Serial consumer (Windows)','Serial consumer (macOS)','Serial consumer (Linux)','BLE consumer (Windows)','BLE consumer (Linux)','Build macOS universal BLE bridge','BLE consumer (macOS x86_64)','BLE consumer (macOS arm64)','Core consumer (Windows)','Core consumer (macOS)','Core consumer (Linux)','Start routine downstream validation')) {
         $matching=@($jobs | Where-Object { $_.name -ceq $name })
         if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Required Core producer job missing/skipped/failed: $name" }
     }
@@ -160,7 +160,7 @@ function Assert-UnityRemoteProjection([string]$Sha,$Record) {
         @(Compare-Object $UnityProjectionFiles @($Record.files.source) -CaseSensitive).Count) { throw 'Invalid merged projection inventory/digest.' }
     $tree=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/git/trees/${Sha}?recursive=1") | ConvertFrom-Json
     if ($tree.truncated) { throw 'Merged wrapper tree response is truncated.' }
-    $dlls=@($tree.tree | Where-Object { $_.path.StartsWith($UnityPluginPath+'/',[StringComparison]::Ordinal) -and ($_.path.EndsWith('.dll',[StringComparison]::Ordinal) -or $_.path.EndsWith('.so',[StringComparison]::Ordinal)) } | ForEach-Object { $_.path })
+    $dlls=@($tree.tree | Where-Object { $_.path.StartsWith($UnityPluginPath+'/',[StringComparison]::Ordinal) -and ($_.path.EndsWith('.dll',[StringComparison]::Ordinal) -or $_.path.EndsWith('.so',[StringComparison]::Ordinal) -or $_.path.EndsWith('.dylib',[StringComparison]::Ordinal)) } | ForEach-Object { $_.path })
     $expected=@($UnityProjectionFiles | ForEach-Object { "$UnityPluginPath/$(Get-UnityProjectionPath $_)" })
     if (@(Compare-Object $expected $dlls -CaseSensitive).Count) { throw 'Merged wrapper has extra/missing payload DLLs.' }
     foreach ($file in $Record.files) {

@@ -1,48 +1,62 @@
-# WSS Unity Interface
-C# class that has all the methods to communicate with the WSS and software specific classes that implements some of the functionalities necessary for that program.
+# WSS Unity Integration Library
 
-All documentation about the API and other implementations can be found in [GitHub Pages](https://cwru-non-academic.github.io/WSS_Documentation/).
+Use WSS from a Unity application through the `Stimulation` component. It composes the shared Core, stimulation-parameter and model layers and advances them from Unity's update loop.
 
-## Unity Requirements
-Change NET framework 2.1 to NET Framework within Project settings > player > other settings > config.
+For a complete application, start with the [Unity GUI README](https://github.com/cwru-non-academic/GUI_Unity_WSS_Application#readme). Shared architecture, configuration and API references are in the [WSS documentation](https://cwru-non-academic.github.io/WSS_Documentation/).
 
-## How to add a submodule to exiting project
-1. Close other software using the code solution (Unity, Visual Studio, etc)
-2. If using git desktop, open the command prompt by going to `Repository>Open in Command Prompt`
-3. Use command `git submodule add <submoduleURL> <pathInProject>` 
-	- if using a submodule inside of Unity make sure the path is inside the Assests folder
-	- Ex HTTPS: `git submodule add https://github.com/cwru-non-academic/WSSInterfacingCode Assets\SubModules\WSSInterfacingModule`
- 	- Ex SSH: `git submodule add git@github.com:cwru-non-academic/HFI_WSS_Interface.git Assets\SubModules\WSSInterfacingModule`
-4. Click `Current repository>Add>Add existing repository..` and locate the folder where you installed the submodule `<pathInProject>` 
-5. Remove old scripts from the project that are now part of the submodule
-6. Open solution dependent software and let it refactor.
-7. (Unity Only) Make sure all you scripts in the scene are still available and linked correctly.
-8. (Unity only) Add `"com.unity.nuget.newtonsoft-json": "3.2.1",` to your package manager manifest under dependencies found in `<project>/Packages/manifest.json`
+## Add to a Unity project
 
-## How to commit a git project that has submodules (Git Desktop)
-1. This only applies if the changes were made to the submodule, otherwise just commit as normal.
-2. Inside of the git Desktop a warning will appear that says there are submodule chnages.
-3. Changes to submodules must be commited first in the submodules repo.
-4. If the submodule repo is already setup, just click open repository shortcut under the submodule changes warning.
-5. If it is not setup, click the shortcut to add it to Git Desktop.
-6. Once in the submodule repo, commit the changes as normal.
-7. Return to the main repo and commit the changes there (The chnage in commit ID will be not be selected by default. select it and then commit). 
+Use Unity **2022.3.62f3**, the version used by the bundled GUI, and Git. Close Unity while adding the submodule. From your application's repository root:
 
-## How to commit a git project that has submodules (Git CMD)
-`git clone --recursive git@github.com:cwru-non-academic/HFI_WSS_Interface.git`
+```bash
+git submodule add https://github.com/cwru-non-academic/Unity_WSS_Integration_Lib.git Assets/SubModules/WSSInterfacingModule
+git submodule update --init --recursive
+```
 
-## How to pull a submodule change (Git Desktop)
-1. Make sure the git submodule repo is already part of your repos in git desktop
-2. If not add it by following `How to add a submodule to exiting project`
-3. Go to the submodule repo and pull changes as normal. 
-4. Pulling a submodule will add a change in commit ID to the main repo. 
-	- Multiple changes in commit ID can be commited to the main repo as a single commit and together with other changes to the main repo.
+When cloning an application that already includes the library, use `git clone --recurse-submodules <application-url>` instead. Keep the application's recorded submodule commit so its scripts and bundled DLLs stay together.
 
-## How to update the DLLs
-1. Download the desired release version of the DLLs from [Releases](https://github.com/cwru-non-academic/WSSCoreInterface/releases).  
-2. Clear the old DLLs in `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.  
-3. Extract the ZIP file downloaded from the GitHub release page.  
-4. Paste the entire contents of the `WSS_Core_Interface` folder into `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.
+1. Open the project in Unity. Set **Project Settings > Player > Other Settings > Api Compatibility Level** to **.NET Framework** for the desktop target.
+2. Add `"com.unity.nuget.newtonsoft-json": "3.2.1"` to the `dependencies` object in `Packages/manifest.json`. The library's bundled Newtonsoft DLL is excluded by its plugin import settings; keep those `.meta` files.
+3. Create `Assets/StreamingAssets` and copy `stimConfig.json`, `stimParams.json` and `modelConfig.json` from the [GUI's example configuration](https://github.com/cwru-non-academic/GUI_Unity_WSS_Application/tree/main/Assets/StreamingAssets). These files configure the Core, channel parameters and model respectively.
+4. Add a `Stimulation` component to a GameObject. Before entering Play mode, set **Transport Type** to **Test** for an in-memory startup without device I/O. Auto selection and Device Name are ignored in this mode.
 
-## API and other Documentation
-All documentation reagarding hardware, API, and communication protocols can be found here [WSS Docs](https://cwru-non-academic.github.io/WSS_Documentation/).
+The library includes the managed Core and transport DLLs under `Plugins/WSS_Core_Interface`. Do not add another copy of those assemblies to the project.
+
+## Minimal simulator status example
+
+Save this as `Assets/Scripts/WssStatus.cs`, attach it to a GameObject, and assign the Test-configured `Stimulation` component in the Inspector:
+
+```csharp
+using UnityEngine;
+
+public sealed class WssStatus : MonoBehaviour
+{
+    [SerializeField] private Stimulation stimulation;
+    private bool reported;
+
+    private void Update()
+    {
+        if (!reported && (stimulation.Ready() || stimulation.Started()))
+        {
+            reported = true;
+            Debug.Log("WSS simulator initialized");
+        }
+    }
+}
+```
+
+Enter Play mode and check the Unity Console. `Stimulation` initializes on enable, ticks in `Update`, and shuts down when disabled or when Play mode ends. Call its methods on Unity's main thread. The example only reports status; it sends no application stimulation commands.
+
+## Select a device
+
+Stop Play mode before changing the transport. Select **Serial** or **BLE** and choose automatic selection or disable **Auto** and enter a specific **Device Name**. Serial expects a port name; BLE accepts an advertised name, `name:<name>`, or `id:<identifier>` understood by the host backend. Keep the component disabled until configuration and device selection are ready: enabling it begins connection and device setup.
+
+Use [shared platform and configuration guidance](https://cwru-non-academic.github.io/WSS_Documentation/) when preparing a device session. `resetRadio()` rebuilds the selected connection; `releaseRadio()` shuts it down. Wait for `Ready()` or `Started()` before issuing application commands.
+
+## Dependencies and reference
+
+Update the entire compatible Core artifact set together with its plugin metadata; avoid mixing DLLs from different releases. Core releases are published from [WSSCore](https://github.com/cwru-non-academic/WSSCore/releases). The application records the library version through its submodule commit.
+
+- [Unity GUI setup and controls](https://github.com/cwru-non-academic/GUI_Unity_WSS_Application#readme)
+- [WSS documentation and API reference](https://cwru-non-academic.github.io/WSS_Documentation/)
+- [Core source](https://github.com/cwru-non-academic/WSSCore)

@@ -61,3 +61,6 @@ Candidate preflight runs the same three platform checks against independently re
 
 ## API and other Documentation
 All documentation reagarding hardware, API, and communication protocols can be found here [WSS Docs](https://cwru-non-academic.github.io/WSS_Documentation/).
+
+The macOS receiver accepts the exact 27-file universal archive, projects the macOS DLL/dylib pair with disabled Unity importers, and verifies their exact bytes, default load context and native ABI exports in hosted .NET. The Unity selector still rejects non-Windows BLE. This is package compatibility evidence, not physical BLE or Unity Editor/Player support. Canonical producer tuple: run 40794719291, commit 25ee25e519e77be96a918b9b63f3a402c550d631, artifact 12863706436, ZIP SHA256 b88d70c12b67445adb092bea8f5beebf72f89e605e2d531b52d14e6a72c501f3.
+

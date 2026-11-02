@@ -18,7 +18,9 @@ internal static class PlatformCompatibility
             // Ports must be selected by the .NET host's package metadata, as in
             // C#. Never substitute a test-owned Ports resolver for that behavior.
             if (name.Name == "System.IO.Ports") return null;
-            string path = Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
+            string path = name.Name == "WSS.Transport.BLE.MacOS"
+                ? Path.Combine(AppContext.BaseDirectory, "backends", "macos", name.Name + ".dll")
+                : Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
             return File.Exists(path) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(path) : null;
         };
         try
@@ -37,6 +39,9 @@ internal static class PlatformCompatibility
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Run(string projection, string resultPath)
     {
+        bool macDeclared = DeclaresMacOSBackend();
+        AssertMacPayload(projection, macDeclared);
+        AssertMacPayload(AppContext.BaseDirectory, macDeclared);
         string runtime = OperatingSystem.IsWindows() ? "win" : "unix";
         string relative = Path.Combine("runtimes", runtime, "lib", "net8.0", "System.IO.Ports.dll");
         using (var serial = WssTransportSupport.Create(WssTransportType.Serial, false,
@@ -77,20 +82,33 @@ internal static class PlatformCompatibility
             finally { NativeLibrary.Free(native); }
             ble = "Windows production selector/backend/native exports loaded; no scan or connection";
         }
+        else if (OperatingSystem.IsMacOS() && macDeclared)
+        {
+            for (int cycle = 0; cycle < 2; cycle++)
+            {
+                using var transport = WssTransportSupport.Create(WssTransportType.BLE, false, "name:ci-load-only");
+                Require(!transport.IsConnected, "macOS construction unexpectedly connected.");
+                object facade = typeof(WssBleTransport).GetField("_inner", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
+                object backend = typeof(BleNusTransport).GetField("_backend", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(facade)!;
+                Require(backend.GetType().FullName == "Wss.Transports.Backends.MacOS.MacBleNusBackend", "Unity selected the wrong macOS backend.");
+            }
+            ble = "macOS Mono production selector, repeated registration/construction/disposal and native ABI; no scan or connection";
+        }
         else
         {
             try
             {
                 using var unexpected = WssTransportSupport.Create(WssTransportType.BLE, false, "name:ci-load-only");
-                throw new InvalidOperationException("Non-Windows Unity BLE unexpectedly selected a backend.");
+                throw new InvalidOperationException("Unsupported Unity platform unexpectedly selected a BLE backend.");
             }
             catch (PlatformNotSupportedException ex)
             {
-                Require(ex.Message.Contains("Windows Editor or Windows standalone"), "Unexpected unsupported BLE failure.");
+                Require(ex.Message.Contains("Linux and other Unity targets are not supported") ||
+                    (OperatingSystem.IsMacOS() && !macDeclared && ex.Message.Contains("macOS BLE requires")), "Unexpected unsupported BLE failure.");
             }
             Require(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name.StartsWith("WSS.Transport.BLE.Windows")),
                 "Unsupported platform loaded the Windows BLE backend.");
-            ble = "unsupported by the production Unity selector; rejection verified (Linux Core BLE is not Unity BLE support)";
+            ble = "unsupported by this platform/payload; explicit rejection verified; no backend capability inferred";
         }
         foreach (Assembly shared in new[] { typeof(ITransport).Assembly, typeof(SerialPortTransport).Assembly, typeof(BleNusTransport).Assembly })
         {
@@ -98,10 +116,8 @@ internal static class PlatformCompatibility
             Require(AppDomain.CurrentDomain.GetAssemblies().Count(a => a.GetName().Name == shared.GetName().Name) == 1,
                 "Duplicate transport contract assembly.");
         }
-        if (OperatingSystem.IsMacOS())
+        if (OperatingSystem.IsMacOS() && macDeclared)
         {
-            // Core package loading is distinct from the Unity selector's support boundary.
-            using var facade = new BleNusTransport(new BleNusTransportOptions { DeviceName = "ci-load-only" });
             string directory = Path.Combine(AppContext.BaseDirectory, "backends", "macos");
             Assembly backend = AppDomain.CurrentDomain.GetAssemblies().Single(a => a.GetName().Name == "WSS.Transport.BLE.MacOS");
             Require(Path.GetFullPath(backend.Location) == Path.Combine(directory, "WSS.Transport.BLE.MacOS.dll"), "Wrong macOS backend location.");
@@ -118,7 +134,8 @@ internal static class PlatformCompatibility
                 foreach (var import in imports) Require(NativeLibrary.GetExport(native, import.EntryPoint) != nint.Zero, "Missing macOS ABI export.");
             }
             finally { NativeLibrary.Free(native); }
-            Console.WriteLine("PASS: exact macOS Core backend/native ABI loaded; Unity BLE remains unsupported; no scan or connection.");
+            backend.GetType("Wss.Transports.Backends.MacOS.MacBleBackend", true)!.GetMethod("VerifyNativeAbi")!.Invoke(null, null);
+            Console.WriteLine("PASS: macOS Mono selector and exact backend/native ABI loaded in .NET; Unity engine and Bluetooth I/O were not executed.");
         }
         Require(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name is "WinRT.Runtime" or "Microsoft.Windows.SDK.NET"),
             "Unexpected WinRT managed dependency.");
@@ -127,13 +144,36 @@ internal static class PlatformCompatibility
         {
             schema = "wss-dotnet-platform-probe/v1", execution = "dotnet", unity_executed = false,
             os = RuntimeInformation.OSDescription, architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            serial = "exact packaged OS runtime selected; construction only", ble, hardware_access = false
+            serial = "exact packaged OS runtime selected; construction only", ble, macos_backend_declared = macDeclared, hardware_access = false
         }, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static void SameBytes(string actual, string expected) => Require(
         SHA256.HashData(File.ReadAllBytes(actual)).SequenceEqual(SHA256.HashData(File.ReadAllBytes(expected))),
         "Loaded bytes differ from verified projection: " + actual);
+
+    private static bool DeclaresMacOSBackend()
+    {
+        Type loader = typeof(BleNusTransport).Assembly.GetType("Wss.Transports.Backends.BleBackendLoader", true)!;
+        MethodInfo identity = loader.GetMethod("GetBackendIdentity", BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Unknown BLE capability contract; cannot infer unsupported macOS.");
+        try
+        {
+            var mapping = ((string AssemblyName, string FactoryName))identity.Invoke(null, new object[] { "macos" })!;
+            Require(mapping.AssemblyName == "WSS.Transport.BLE.MacOS" && mapping.FactoryName == "Wss.Transports.Backends.MacOS.MacBleNusBackendFactory", "Unexpected macOS capability mapping.");
+            return true;
+        }
+        catch (TargetInvocationException e) when (e.InnerException is ArgumentOutOfRangeException argument && argument.ParamName == "platform") { return false; }
+    }
+
+    private static void AssertMacPayload(string root, bool declared)
+    {
+        string directory = Path.Combine(root, "backends", "macos");
+        string[] actual = Directory.Exists(directory) ? Directory.GetFiles(directory, "*", SearchOption.AllDirectories)
+            .Where(p => !p.EndsWith(".meta", StringComparison.Ordinal)).Select(Path.GetFileName).OrderBy(p => p, StringComparer.Ordinal).ToArray()! : Array.Empty<string>();
+        string[] expected = declared ? new[] { "WSS.Transport.BLE.MacOS.dll", "libwss_macos_ble.dylib" } : Array.Empty<string>();
+        Require(actual.SequenceEqual(expected), "Declared macOS capability requires exactly its managed/native pair; legacy facades must not contain orphan Mac binaries.");
+    }
 
     private static void Require(bool condition, string message)
     {

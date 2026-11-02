@@ -4,6 +4,7 @@ using System.IO;
 using Wss.CoreModule;
 using Wss.ModelModule;
 using Wss.Testing;
+using Wss.Transports;
 
 // Ordinary .NET host for the real Stimulation.Commands/Stack partial source.
 // This is deliberately not a MonoBehaviour or a UnityEngine compatibility stub.
@@ -12,7 +13,9 @@ public partial class Stimulation : IDisposable
     private readonly string _directory;
     private IStimulationCore _owner;
     private IModelParamsCore _wss;
-    private EmulatedWssTransport _transport;
+    private ITransport _transport;
+    private EmulatedWssTransport _emulator;
+    private readonly bool _useBleLifecycle;
     private IBasicStimulation basicWSS;
     private bool basicSupported;
     private bool _initialized;
@@ -21,11 +24,13 @@ public partial class Stimulation : IDisposable
 
     /// <summary>Creates an emulator-only host for the shared production wrapper source.</summary>
     /// <param name="directory">Existing directory containing canonical configuration files.</param>
-    public Stimulation(string directory)
+    /// <param name="useBleLifecycle">Wraps the emulator in the production BLE lifetime adapter; performs no Bluetooth I/O.</param>
+    public Stimulation(string directory, bool useBleLifecycle = false)
     {
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
             throw new ArgumentException("An existing fixture directory is required.", nameof(directory));
         _directory = Path.GetFullPath(directory);
+        _useBleLifecycle = useBleLifecycle;
     }
 
     /// <summary>Initializes the same Core, parameter and model layers used by the Unity host.</summary>
@@ -33,7 +38,13 @@ public partial class Stimulation : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(Stimulation));
         if (_initialized) return;
-        _transport = new EmulatedWssTransport();
+        _emulator = new EmulatedWssTransport();
+#if BLE_LIFECYCLE_CONFORMANCE
+        _transport = _useBleLifecycle ? (ITransport)new WssBleTransport(_emulator) : _emulator;
+#else
+        if (_useBleLifecycle) throw new InvalidOperationException("BLE lifecycle source is not included in this harness.");
+        _transport = _emulator;
+#endif
         try
         {
             _wss = WssStimulationStack.Build(_transport, _directory, 1, ref _owner);
@@ -53,7 +64,7 @@ public partial class Stimulation : IDisposable
     /// <returns>True after an emulator has been created.</returns>
     public bool TryGetConformance(out IWssConformance conformance)
     {
-        conformance = (_transport as IConformanceProvider)?.Conformance;
+        conformance = (_emulator as IConformanceProvider)?.Conformance;
         return conformance != null;
     }
 

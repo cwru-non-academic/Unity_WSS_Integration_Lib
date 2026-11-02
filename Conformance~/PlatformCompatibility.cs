@@ -144,7 +144,7 @@ internal static class PlatformCompatibility
         {
             schema = "wss-dotnet-platform-probe/v1", execution = "dotnet", unity_executed = false,
             os = RuntimeInformation.OSDescription, architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            serial = "exact packaged OS runtime selected; construction only", ble, hardware_access = false
+            serial = "exact packaged OS runtime selected; construction only", ble, macos_backend_declared = macDeclared, hardware_access = false
         }, new JsonSerializerOptions { WriteIndented = true }));
     }
 

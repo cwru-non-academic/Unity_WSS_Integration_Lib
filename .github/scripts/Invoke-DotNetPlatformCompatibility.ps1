@@ -48,6 +48,20 @@ $result=Join-Path $OutputRoot 'platform-result.json'
 & dotnet (Join-Path $publish 'Wss.PlatformCompatibility.dll') $projection $result *> (Join-Path $OutputRoot 'platform.log')
 Get-Content -LiteralPath (Join-Path $OutputRoot 'platform.log') | Write-Output
 if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $result)) { throw 'Production transport selection/load probe failed.' }
+$badRoot=Join-Path $OutputRoot 'capability-negative'
+$null=New-Item -ItemType Directory -Path $badRoot
+if ('backends/macos/WSS.Transport.BLE.MacOS.dll' -cnotin @(Get-UnityCommittedProjectionFiles $record)) {
+    # A legacy facade cannot silently accept an orphan Mac payload either.
+    $orphan=Join-Path $badRoot 'backends/macos'
+    $null=New-Item -ItemType Directory -Path $orphan -Force
+    [IO.File]::WriteAllBytes((Join-Path $orphan 'orphan.dll'),([byte[]]@(0)))
+}
+$negativeResult=Join-Path $OutputRoot 'unexpected-capability-result.json'
+$negativeLog=Join-Path $OutputRoot 'capability-negative.log'
+& dotnet (Join-Path $publish 'Wss.PlatformCompatibility.dll') $badRoot $negativeResult *> $negativeLog
+if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $negativeResult) -or
+    (Get-Content -LiteralPath $negativeLog -Raw) -notmatch 'Declared macOS capability requires exactly') { throw 'Declared/missing or legacy/orphan macOS payload was not rejected.' }
+Write-Output 'PASS: facade capability cannot hide missing declared macOS files or accept orphan legacy files.'
 Assert-UnityProjection $projection $record
 Assert-UnitySource $WrapperRoot $WrapperSha
 Assert-UnitySource $FixtureRoot (Read-UnityConfig $ConfigPath).fixture_commit

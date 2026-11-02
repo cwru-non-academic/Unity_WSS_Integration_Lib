@@ -36,7 +36,7 @@ try {
     & dotnet publish Wss.PlatformCompatibility.csproj -c Release -o $publish *> (Join-Path $OutputRoot 'publish.log')
     if ($LASTEXITCODE -ne 0) { throw 'Platform probe publish failed. Inspect publish.log.' }
 } finally { Pop-Location }
-foreach ($source in $UnityProjectionFiles) {
+foreach ($source in @(Get-UnityCommittedProjectionFiles $record)) {
     $relative=Get-UnityProjectionPath $source
     foreach ($directory in @((Join-Path $probe 'bin/Release/net9.0'),$publish)) {
         if ((Get-FileHash -LiteralPath (Join-Path $directory $relative)).Hash -cne (Get-FileHash -LiteralPath (Join-Path $projection $relative)).Hash) {

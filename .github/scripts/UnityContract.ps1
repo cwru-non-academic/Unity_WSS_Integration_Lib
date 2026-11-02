@@ -11,6 +11,14 @@ $UnityProjectionFiles = @($WssUniversalFiles | Where-Object { $_ -notmatch '/' }
     'backends/windows/WssBleWindows.dll',
     'backends/macos/WSS.Transport.BLE.MacOS.dll',
     'backends/macos/libwss_macos_ble.dylib') + @($WssUniversalFiles | Where-Object { $_ -like 'runtimes/*' })
+$UnityLegacyProjectionFiles=@($UnityProjectionFiles | Where-Object { $_ -cnotlike 'backends/macos/*' })
+
+function Get-UnityCommittedProjectionFiles($Record) {
+    foreach ($inventory in @(@{files=$UnityProjectionFiles},@{files=$UnityLegacyProjectionFiles})) {
+        if ($Record.files.Count -eq $inventory.files.Count -and @(Compare-Object $inventory.files @($Record.files.source) -CaseSensitive).Count -eq 0) { return $inventory.files }
+    }
+    throw 'Projection must match exactly the declared 20-file macOS or legacy 18-file layout.'
+}
 
 function Get-UnityProjectionPath([string]$Source) {
     # Preserve RID paths (including duplicate Ports filenames); the established
@@ -97,10 +105,11 @@ function Assert-UnityMacImporter([string]$Meta) {
 function Assert-UnityProjection([string]$Root, $Record) {
     if ($Record.schema -cne 'wss-unity-projection/v1') { throw 'Invalid Unity projection schema.' }
     Assert-UnityCandidate $Record.candidate
-    $expected = @($UnityProjectionFiles | ForEach-Object { Get-UnityProjectionPath $_ })
+    $sources=@(Get-UnityCommittedProjectionFiles $Record)
+    $expected = @($sources | ForEach-Object { Get-UnityProjectionPath $_ })
     $actual = @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object { $_.Extension -in @('.dll','.so','.dylib') } | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
     if (@(Compare-Object $expected $actual -CaseSensitive).Count -ne 0 -or $Record.files.Count -ne $expected.Count) { throw 'Wrong Unity DLL inventory; stale fallback/extra DLLs are forbidden.' }
-    if (@(Compare-Object $UnityProjectionFiles @($Record.files.source) -CaseSensitive).Count -ne 0) { throw 'Wrong projection source inventory.' }
+    if (@(Compare-Object $sources @($Record.files.source) -CaseSensitive).Count -ne 0) { throw 'Wrong projection source inventory.' }
     foreach ($item in $Record.files) {
         $path = Join-Path $Root (Get-UnityProjectionPath $item.source)
         if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $item.sha256 -or

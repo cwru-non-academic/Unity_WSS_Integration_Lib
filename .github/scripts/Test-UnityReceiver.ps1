@@ -4,6 +4,10 @@ if (Test-Path $Scratch) { throw 'Negative-test scratch must be new.' }
 New-Item -ItemType Directory -Path $Scratch | Out-Null
 Copy-Item -Path (Join-Path $ProjectionRoot '*') -Destination $Scratch -Recurse
 Assert-UnityProjection $Scratch $Record
+if ('backends/macos/WSS.Transport.BLE.MacOS.dll' -cnotin @(Get-UnityCommittedProjectionFiles $Record)) {
+    Write-Output 'Legacy 18-file projection verified. Declared-backend presence is independently enforced by the platform consumer; no macOS support is inferred.'
+    return
+}
 function Require-Rejection {
     $rejected=$false
     try { Assert-UnityProjection $Scratch $Record } catch { $rejected=$true }

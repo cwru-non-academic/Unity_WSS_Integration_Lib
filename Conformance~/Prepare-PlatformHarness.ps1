@@ -40,7 +40,7 @@ $project=@'
     <Reference Include="payload/*.dll" Exclude="payload/WssBleWindows.dll;payload/System.IO.Ports.dll">
       <Private>false</Private>
     </Reference>
-    <Reference Include="WSS.Transport.BLE.MacOS">
+    <Reference Include="WSS.Transport.BLE.MacOS" Condition="Exists('payload/backends/macos/WSS.Transport.BLE.MacOS.dll')">
       <HintPath>payload/backends/macos/WSS.Transport.BLE.MacOS.dll</HintPath>
       <Private>false</Private>
     </Reference>

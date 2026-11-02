@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory)][string]$Destination,
     [Parameter(Mandatory)][string]$ProjectionRoot,
     [ValidateSet('wrapper','gui')][string]$Role='wrapper',
-    [string]$GuiRoot=''
+    [string]$GuiRoot='',
+    [switch]$BleLifecycle
 )
 $ErrorActionPreference='Stop'
 $wrapper=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -22,7 +23,8 @@ $factory='(?s)private static StimulationController CreateController\(string fixt
 if ([regex]::Matches($canonical,$factory).Count -ne 1) { throw 'Canonical controller factory changed.' }
 # The factory/alias is the only fixture adaptation. No serializer, case, delay,
 # expected value, assertion, grouped failure reporting or evaluator is replaced.
-$adapted="using StimulationController = DotNetConformanceAdapter;`n"+[regex]::Replace($canonical,$factory,'private static StimulationController CreateController(string fixtureDirectory) => new(fixtureDirectory);')
+$replacement=if ($BleLifecycle) { 'private static StimulationController CreateController(string fixtureDirectory) => new(fixtureDirectory, true);' } else { 'private static StimulationController CreateController(string fixtureDirectory) => new(fixtureDirectory);' }
+$adapted="using StimulationController = DotNetConformanceAdapter;`n"+[regex]::Replace($canonical,$factory,$replacement)
 $assertions=@([regex]::Matches($canonical,'Assert\.That\(.*?;','Singleline').Value)
 if ($assertions.Count -ne 18 -or ($assertions -join "`n") -cne (@([regex]::Matches($adapted,'Assert\.That\(.*?;','Singleline').Value) -join "`n")) { throw 'Canonical assertion expressions changed.' }
 New-Item -ItemType Directory -Path $target | Out-Null
@@ -31,6 +33,9 @@ $sources=@(
     (Join-Path $wrapper 'UnityImplementation/Stimulation.Stack.cs'),
     (Join-Path $PSScriptRoot 'Stimulation.DotNet.cs'),
     (Join-Path $PSScriptRoot 'DotNetConformanceAdapter.cs'))
+if ($BleLifecycle) {
+    $sources+=@((Join-Path $wrapper 'UnityImplementation/WssTransportSupport.cs'),(Join-Path $PSScriptRoot 'BleLifecycleTests.cs'))
+}
 if ($Role -ceq 'gui') {
     if (!$GuiRoot) { throw 'GUI mode requires the exact GUI source checkout.' }
     $sources+=@((Join-Path $GuiRoot 'Assets/Scripts/Diagnostics/WssConformanceController.cs'),(Join-Path $GuiRoot 'tools/UnityConformance/WssConformanceController.DotNet.cs'))
@@ -55,12 +60,15 @@ $project=@'
     <PackageReference Include="NUnit" Version="3.14.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
     <Reference Include="WSS_Core_Interface"><HintPath>lib/WSS_Core_Interface.dll</HintPath></Reference>
+    <Reference Include="WSS.Transport.BLE"><HintPath>lib/WSS.Transport.BLE.dll</HintPath></Reference>
+    <Reference Include="WSS.Transport.Serial"><HintPath>lib/WSS.Transport.Serial.dll</HintPath></Reference>
     <Reference Include="Newtonsoft.Json"><HintPath>lib/Newtonsoft.Json.dll</HintPath></Reference>
     <Reference Include="System.Security.Permissions"><HintPath>lib/System.Security.Permissions.dll</HintPath></Reference>
   </ItemGroup>
 </Project>
 '@
 $constant=if ($Role -ceq 'gui') { 'GUI_CONFORMANCE' } else { 'WRAPPER_CONFORMANCE' }
+if ($BleLifecycle) { $constant+=';BLE_LIFECYCLE_CONFORMANCE' }
 [IO.File]::WriteAllText((Join-Path $target 'Wss.DotNet.Conformance.Tests.csproj'),$project.Replace('ROLE_CONSTANT',$constant))
 @{sdk=@{version='9.0.316';rollForward='disable'}} | ConvertTo-Json | Set-Content (Join-Path $target 'global.json')
 @{schema='wss-dotnet-inputs/v1';role=$Role;canonical_fixture_sha256=$fixtureHash;assertion_expressions=18;execution='ordinary .NET; not Unity';files=@($sources | ForEach-Object { @{path=$_;sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()} })} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $target 'conformance-inputs.json')

@@ -8,12 +8,22 @@ $UnityPluginPath = 'Plugins/WSS_Core_Interface'
 $UnityProjectionFiles = @($WssUniversalFiles | Where-Object { $_ -notmatch '/' }) + @(
     'backends/windows/WSS.Transport.BLE.Windows.dll',
     'backends/windows/WSS.Transport.BLE.Windows.Native.dll',
-    'backends/windows/WssBleWindows.dll') + @($WssUniversalFiles | Where-Object { $_ -like 'runtimes/*' })
+    'backends/windows/WssBleWindows.dll',
+    'backends/macos/WSS.Transport.BLE.MacOS.dll',
+    'backends/macos/libwss_macos_ble.dylib') + @($WssUniversalFiles | Where-Object { $_ -like 'runtimes/*' })
+$UnityLegacyProjectionFiles=@($UnityProjectionFiles | Where-Object { $_ -cnotlike 'backends/macos/*' })
+
+function Get-UnityCommittedProjectionFiles($Record) {
+    foreach ($inventory in @(@{files=$UnityProjectionFiles},@{files=$UnityLegacyProjectionFiles})) {
+        if ($Record.files.Count -eq $inventory.files.Count -and @(Compare-Object $inventory.files @($Record.files.source) -CaseSensitive).Count -eq 0) { return $inventory.files }
+    }
+    throw 'Projection must match exactly the declared 20-file macOS or legacy 18-file layout.'
+}
 
 function Get-UnityProjectionPath([string]$Source) {
     # Preserve RID paths (including duplicate Ports filenames); the established
     # Unity Windows BLE importer layout remains flat.
-    if ($Source.StartsWith('runtimes/',[StringComparison]::Ordinal)) { return $Source }
+    if ($Source.StartsWith('runtimes/',[StringComparison]::Ordinal) -or $Source.StartsWith('backends/macos/',[StringComparison]::Ordinal)) { return $Source }
     [IO.Path]::GetFileName($Source)
 }
 
@@ -73,13 +83,33 @@ function Get-UnityProjectionDigest($Files) {
     $text = @($Files | Sort-Object { [string]$_.source } | ForEach-Object { "$($_.source)|$($_.sha256)|$($_.meta_sha256)" }) -join "`n"
     [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text))).ToLowerInvariant()
 }
+function Assert-UnityMacImporter([string]$Meta) {
+    if ($Meta -cnotmatch "(?m)^  defineConstraints:\r?\n  - '!ENABLE_IL2CPP'\r?\n" -or
+        $Meta -cnotmatch '(?m)^  isPreloaded: 0\r?$') { throw 'macOS BLE importer must exclude IL2CPP and lazy-load native code.' }
+    $blocks=@([regex]::Split($Meta,'(?m)^  - first:\r?\n') | Select-Object -Skip 1)
+    if ($blocks.Count -ne 4) { throw 'Unexpected macOS BLE importer platform inventory.' }
+    $seen=@{}
+    foreach ($block in $blocks) {
+        $platform=[regex]::Match($block,'(?m)^      (Any|Editor|Standalone|Windows Store Apps): *([^\r\n]*)\r?$')
+        $enabled=[regex]::Matches($block,'(?m)^      enabled: ([01])\r?$')
+        if (!$platform.Success -or $enabled.Count -ne 1) { throw 'Invalid macOS BLE importer platform.' }
+        $key=$platform.Groups[1].Value+'|'+$platform.Groups[2].Value.Trim()
+        if ($seen.ContainsKey($key)) { throw 'Duplicate macOS BLE importer platform.' }
+        $seen[$key]=$true
+        $expected=if ($key -cin @('Editor|Editor','Standalone|OSXUniversal')) { '1' } elseif ($key -cin @('Any|','Windows Store Apps|WindowsStoreApps')) { '0' } else { throw 'Unexpected macOS BLE target.' }
+        if ($enabled[0].Groups[1].Value -cne $expected) { throw 'macOS BLE importer enabled an unsupported target or disabled macOS.' }
+        if ($expected -ceq '1' -and $block -cnotmatch '(?m)^        CPU: AnyCPU\r?$') { throw 'macOS universal importer requires AnyCPU.' }
+        if ($key -ceq 'Editor|Editor' -and $block -cnotmatch '(?m)^        OS: OSX\r?$') { throw 'macOS BLE Editor importer must be restricted to OSX.' }
+    }
+}
 function Assert-UnityProjection([string]$Root, $Record) {
     if ($Record.schema -cne 'wss-unity-projection/v1') { throw 'Invalid Unity projection schema.' }
     Assert-UnityCandidate $Record.candidate
-    $expected = @($UnityProjectionFiles | ForEach-Object { Get-UnityProjectionPath $_ })
-    $actual = @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object { $_.Extension -in @('.dll','.so') } | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
+    $sources=@(Get-UnityCommittedProjectionFiles $Record)
+    $expected = @($sources | ForEach-Object { Get-UnityProjectionPath $_ })
+    $actual = @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object { $_.Extension -in @('.dll','.so','.dylib') } | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
     if (@(Compare-Object $expected $actual -CaseSensitive).Count -ne 0 -or $Record.files.Count -ne $expected.Count) { throw 'Wrong Unity DLL inventory; stale fallback/extra DLLs are forbidden.' }
-    if (@(Compare-Object $UnityProjectionFiles @($Record.files.source) -CaseSensitive).Count -ne 0) { throw 'Wrong projection source inventory.' }
+    if (@(Compare-Object $sources @($Record.files.source) -CaseSensitive).Count -ne 0) { throw 'Wrong projection source inventory.' }
     foreach ($item in $Record.files) {
         $path = Join-Path $Root (Get-UnityProjectionPath $item.source)
         if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $item.sha256 -or
@@ -87,6 +117,7 @@ function Assert-UnityProjection([string]$Root, $Record) {
         $meta = [IO.File]::ReadAllText($path+'.meta')
         if ($item.source -in @('Newtonsoft.Json.dll','System.Numerics.Vectors.dll') -and $meta -match 'enabled: 1') { throw 'Unity-provided JSON/Vectors payload copies must have disabled importers.' }
         if ($item.source -like 'runtimes/*' -and $meta -match 'enabled: 1') { throw '.NET runtime assets must not be imported into Unity Mono/IL2CPP.' }
+        if ($item.source -like 'backends/macos/*') { Assert-UnityMacImporter $meta }
     }
     if ((Get-UnityProjectionDigest $Record.files) -cne $Record.projection_sha256) { throw 'Projection digest mismatch.' }
 }

@@ -19,7 +19,15 @@ internal sealed class DotNetConformanceAdapter : IDisposable
     private Task _ticks = Task.CompletedTask;
     private Exception _tickFailure;
 
-    internal DotNetConformanceAdapter(string directory) => _controller = new Endpoint(directory);
+    internal DotNetConformanceAdapter(string directory, bool useBleLifecycle = false)
+    {
+#if BLE_LIFECYCLE_CONFORMANCE
+        _controller = new Endpoint(directory, useBleLifecycle);
+#else
+        if (useBleLifecycle) throw new InvalidOperationException("BLE lifetime source is not included in this harness.");
+        _controller = new Endpoint(directory);
+#endif
+    }
 
     public void Initialize()
     {

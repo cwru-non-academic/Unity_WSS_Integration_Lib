@@ -40,12 +40,22 @@ $project=@'
     <Reference Include="payload/*.dll" Exclude="payload/WssBleWindows.dll;payload/System.IO.Ports.dll">
       <Private>false</Private>
     </Reference>
+    <Reference Include="WSS.Transport.BLE.MacOS" Condition="Exists('payload/backends/macos/WSS.Transport.BLE.MacOS.dll')">
+      <HintPath>payload/backends/macos/WSS.Transport.BLE.MacOS.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Content Include="payload/**/*" Exclude="payload/**/*.meta">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+  <!-- The universal root Ports assembly targets Unity/netfx; .NET selects its
+       OS runtime through package metadata. Preserve both artifact boundaries. -->
+  <Target Name="PreserveCandidatePorts" AfterTargets="Build;Publish">
+    <Copy SourceFiles="payload/System.IO.Ports.dll" DestinationFiles="$(TargetDir)System.IO.Ports.dll" />
+    <Copy SourceFiles="payload/System.IO.Ports.dll" DestinationFiles="$(PublishDir)System.IO.Ports.dll" Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+  </Target>
 </Project>
 '@
 [IO.File]::WriteAllText((Join-Path $target 'Wss.PlatformCompatibility.csproj'),$project)

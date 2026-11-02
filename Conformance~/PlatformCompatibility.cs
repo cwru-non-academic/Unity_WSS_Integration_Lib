@@ -18,7 +18,9 @@ internal static class PlatformCompatibility
             // Ports must be selected by the .NET host's package metadata, as in
             // C#. Never substitute a test-owned Ports resolver for that behavior.
             if (name.Name == "System.IO.Ports") return null;
-            string path = Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
+            string path = name.Name == "WSS.Transport.BLE.MacOS"
+                ? Path.Combine(AppContext.BaseDirectory, "backends", "macos", name.Name + ".dll")
+                : Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
             return File.Exists(path) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(path) : null;
         };
         try
@@ -77,16 +79,28 @@ internal static class PlatformCompatibility
             finally { NativeLibrary.Free(native); }
             ble = "Windows production selector/backend/native exports loaded; no scan or connection";
         }
+        else if (OperatingSystem.IsMacOS())
+        {
+            for (int cycle = 0; cycle < 2; cycle++)
+            {
+                using var transport = WssTransportSupport.Create(WssTransportType.BLE, false, "name:ci-load-only");
+                Require(!transport.IsConnected, "macOS construction unexpectedly connected.");
+                object facade = typeof(WssBleTransport).GetField("_inner", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
+                object backend = typeof(BleNusTransport).GetField("_backend", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(facade)!;
+                Require(backend.GetType().FullName == "Wss.Transports.Backends.MacOS.MacBleNusBackend", "Unity selected the wrong macOS backend.");
+            }
+            ble = "macOS Mono production selector, repeated registration/construction/disposal and native ABI; no scan or connection";
+        }
         else
         {
             try
             {
                 using var unexpected = WssTransportSupport.Create(WssTransportType.BLE, false, "name:ci-load-only");
-                throw new InvalidOperationException("Non-Windows Unity BLE unexpectedly selected a backend.");
+                throw new InvalidOperationException("Unsupported Unity platform unexpectedly selected a BLE backend.");
             }
             catch (PlatformNotSupportedException ex)
             {
-                Require(ex.Message.Contains("Windows Editor or Windows standalone"), "Unexpected unsupported BLE failure.");
+                Require(ex.Message.Contains("Linux and other Unity targets are not supported"), "Unexpected unsupported BLE failure.");
             }
             Require(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name.StartsWith("WSS.Transport.BLE.Windows")),
                 "Unsupported platform loaded the Windows BLE backend.");
@@ -100,8 +114,6 @@ internal static class PlatformCompatibility
         }
         if (OperatingSystem.IsMacOS())
         {
-            // Core package loading is distinct from the Unity selector's support boundary.
-            using var facade = new BleNusTransport(new BleNusTransportOptions { DeviceName = "ci-load-only" });
             string directory = Path.Combine(AppContext.BaseDirectory, "backends", "macos");
             Assembly backend = AppDomain.CurrentDomain.GetAssemblies().Single(a => a.GetName().Name == "WSS.Transport.BLE.MacOS");
             Require(Path.GetFullPath(backend.Location) == Path.Combine(directory, "WSS.Transport.BLE.MacOS.dll"), "Wrong macOS backend location.");
@@ -118,7 +130,8 @@ internal static class PlatformCompatibility
                 foreach (var import in imports) Require(NativeLibrary.GetExport(native, import.EntryPoint) != nint.Zero, "Missing macOS ABI export.");
             }
             finally { NativeLibrary.Free(native); }
-            Console.WriteLine("PASS: exact macOS Core backend/native ABI loaded; Unity BLE remains unsupported; no scan or connection.");
+            backend.GetType("Wss.Transports.Backends.MacOS.MacBleBackend", true)!.GetMethod("VerifyNativeAbi")!.Invoke(null, null);
+            Console.WriteLine("PASS: macOS Mono selector and exact backend/native ABI loaded in .NET; Unity engine and Bluetooth I/O were not executed.");
         }
         Require(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name is "WinRT.Runtime" or "Microsoft.Windows.SDK.NET"),
             "Unexpected WinRT managed dependency.");

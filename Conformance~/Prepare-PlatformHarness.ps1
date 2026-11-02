@@ -40,6 +40,10 @@ $project=@'
     <Reference Include="payload/*.dll" Exclude="payload/WssBleWindows.dll;payload/System.IO.Ports.dll">
       <Private>false</Private>
     </Reference>
+    <Reference Include="WSS.Transport.BLE.MacOS">
+      <HintPath>payload/backends/macos/WSS.Transport.BLE.MacOS.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Content Include="payload/**/*" Exclude="payload/**/*.meta">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

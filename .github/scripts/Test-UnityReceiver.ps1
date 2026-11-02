@@ -25,5 +25,14 @@ $meta=$native+'.meta'; $original=[IO.File]::ReadAllText($meta)
 [IO.File]::WriteAllText($meta,$original.Replace('enabled: 0','enabled: 1'))
 Require-Rejection
 [IO.File]::WriteAllText($meta,$original)
+foreach ($invalid in @($original.Replace('enabled: 0','enabled: 1'),$original.Replace('OS: OSX','OS: Windows'),$original.Replace("  - '!ENABLE_IL2CPP'",'  - ENABLE_IL2CPP'),$original.Replace('CPU: AnyCPU','CPU: x86_64'))) {
+    # Exercise semantic importer policy independently of the metadata hash gate.
+    $rejected=$false
+    try { Assert-UnityMacImporter $invalid } catch { $rejected=$true }
+    if (!$rejected) { throw 'Unsupported importer policy was accepted.' }
+    [IO.File]::WriteAllText($meta,$invalid)
+    Require-Rejection
+}
+[IO.File]::WriteAllText($meta,$original)
 Assert-UnityProjection $Scratch $Record
-Write-Output 'PASS: missing/corrupt macOS native payload, stale dylib and enabled importer rejected.'
+Write-Output 'PASS: missing/corrupt macOS native payload, stale dylib and unsupported importer targets/IL2CPP/architecture rejected.'

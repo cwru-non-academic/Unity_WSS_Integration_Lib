@@ -19,6 +19,15 @@ if (Test-Path -LiteralPath $OutputRoot) { throw 'Platform output root must be ne
 if (!$?) { throw 'Platform command conformance failed.' }
 $record=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/projection.json') -Raw | ConvertFrom-Json
 $projection=if ($Mode -ceq 'candidate') { Join-Path $OutputRoot 'conformance/projection' } else { Join-Path $WrapperRoot $UnityPluginPath }
+& "$PSScriptRoot/Test-UnityReceiver.ps1" -ProjectionRoot $projection -Record $record -Scratch (Join-Path $OutputRoot 'inventory-negative')
+& "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle') -Role $Role -GuiRoot $GuiRoot
+# Keep diagnostics visible through the existing workflow's root/conformance globs.
+# This does not require changing workflow permissions or its required contexts.
+Copy-Item -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/regression.json') -Destination (Join-Path $OutputRoot 'ble-lifecycle-regression.json')
+Copy-Item -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/dotnet.log') -Destination (Join-Path $OutputRoot 'ble-lifecycle.log')
+$bleResults=@(Get-ChildItem -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/nunit') -Filter '*.xml' -File)
+if ($bleResults.Count -ne 1) { throw 'Missing BLE lifecycle NUnit result.' }
+Copy-Item -LiteralPath $bleResults[0].FullName -Destination (Join-Path $OutputRoot 'conformance/ble-lifecycle-results.xml')
 $probe=Join-Path $OutputRoot 'probe'
 & (Join-Path $WrapperRoot 'Conformance~/Prepare-PlatformHarness.ps1') -Destination $probe -ProjectionRoot $projection
 $publish=Join-Path $OutputRoot 'publish'
@@ -27,7 +36,7 @@ try {
     & dotnet publish Wss.PlatformCompatibility.csproj -c Release -o $publish *> (Join-Path $OutputRoot 'publish.log')
     if ($LASTEXITCODE -ne 0) { throw 'Platform probe publish failed. Inspect publish.log.' }
 } finally { Pop-Location }
-foreach ($source in $UnityProjectionFiles) {
+foreach ($source in @(Get-UnityCommittedProjectionFiles $record)) {
     $relative=Get-UnityProjectionPath $source
     foreach ($directory in @((Join-Path $probe 'bin/Release/net9.0'),$publish)) {
         if ((Get-FileHash -LiteralPath (Join-Path $directory $relative)).Hash -cne (Get-FileHash -LiteralPath (Join-Path $projection $relative)).Hash) {

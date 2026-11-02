@@ -13,7 +13,7 @@ public enum WssTransportType
 {
     /// <summary>Uses a serial COM port.</summary>
     Serial = 0,
-    /// <summary>Uses a Windows BLE Nordic UART Service device.</summary>
+    /// <summary>Uses a supported desktop BLE Nordic UART Service device.</summary>
     BLE = 1,
     /// <summary>Uses the existing simulated transport.</summary>
     Test = 2,
@@ -23,8 +23,10 @@ public enum WssTransportType
 
 internal static class WssTransportSupport
 {
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN || ((UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX) && !ENABLE_IL2CPP)
     private static readonly object RegistrationGate = new object();
     private static bool _registered;
+#endif
 
     // Field-only: safe in Unity's serialization callbacks, including worker threads.
     internal static void Migrate(ref int version, bool legacyTest, bool legacyForce,
@@ -53,18 +55,31 @@ internal static class WssTransportSupport
                 return new SerialPortTransport(SerialOptions(auto, device));
             case WssTransportType.BLE:
                 var options = BleOptions(auto, device); // Validate before registration/native access.
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN || ((UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX) && !ENABLE_IL2CPP)
                 lock (RegistrationGate)
                 {
                     if (!_registered)
                     {
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
                         WindowsBleBackend.Register();
+#else
+                        // Keep legacy applications compilable before their reviewed
+                        // payload adoption. link.xml preserves this Mono-only bootstrap.
+                        var bootstrap = Type.GetType("Wss.Transports.Backends.MacOS.MacBleBackend, WSS.Transport.BLE.MacOS", false);
+                        if (bootstrap == null)
+                            throw new PlatformNotSupportedException("macOS BLE requires the matching managed backend/native pair and enabled Mono importers; this legacy payload does not provide them.");
+                        var register = bootstrap.GetMethod("Register", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                        if (register == null) throw new InvalidOperationException("Unexpected macOS BLE registration contract.");
+                        register.Invoke(null, null);
+#endif
                         _registered = true;
                     }
                 }
                 return new WssBleTransport(new BleNusTransport(options));
+#elif UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+                throw new PlatformNotSupportedException("Unity WSS macOS BLE requires the Mono scripting backend; IL2CPP callbacks are not supported.");
 #else
-                throw new PlatformNotSupportedException("Unity WSS BLE requires Windows Editor or Windows standalone.");
+                throw new PlatformNotSupportedException("Unity WSS BLE requires Windows or macOS Mono Editor/standalone. Linux and other Unity targets are not supported.");
 #endif
             default:
                 throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown WSS transport type.");

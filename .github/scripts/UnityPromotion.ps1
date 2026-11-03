@@ -198,7 +198,19 @@ function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     if ($delta.total_commits -lt 1 -or $delta.files.Count -ge 300) { throw 'Wrapper comparison empty or potentially truncated.' }
     Assert-UnityDiff @($delta.files.filename) (Get-UnityAllowedWrapperPaths)
     $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityWrapperRepository/actions/workflows/unity-compatibility.yml/runs?event=pull_request&head_sha=$($pr.head.sha)&per_page=100") | ConvertFrom-Json
-    $runs=@($pages | ForEach-Object { $_.workflow_runs } | Where-Object { @($_.pull_requests.number) -contains [int]$PrNumber } | Sort-Object { [long]$_.id } -Descending)
+    # GitHub may clear pull_requests after merge. Bind an empty association to
+    # the reviewed PR's exact repository, workflow, event, head SHA and branch.
+    # Nonempty associations must name only that PR; conflicting evidence fails.
+    $runs=@($pages | ForEach-Object { $_.workflow_runs } | Where-Object {
+        $_.repository.full_name -ceq $UnityWrapperRepository -and
+        $_.head_repository.full_name -ceq $UnityWrapperRepository -and
+        $_.path -ceq '.github/workflows/unity-compatibility.yml' -and
+        $_.event -ceq 'pull_request' -and $_.head_sha -ceq $pr.head.sha -and
+        $_.head_branch -ceq $pr.head.ref -and
+        (@($_.pull_requests).Count -eq 0 -or
+            (@($_.pull_requests).Count -eq 1 -and
+                [string]$_.pull_requests[0].number -ceq $PrNumber))
+    } | Sort-Object { [long]$_.id } -Descending)
     if ($runs.Count -eq 0 -or $runs[0].status -cne 'completed' -or $runs[0].conclusion -cne 'success') { throw 'Latest final-head normal wrapper PR CI has not succeeded.' }
     $jobs=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityWrapperRepository/actions/runs/$($runs[0].id)/jobs?per_page=100") | ConvertFrom-Json
     $required=@($jobs | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq 'Integration behavioral tests' })

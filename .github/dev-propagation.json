@@ -1,0 +1,9 @@
+{
+  "schema": "wss-dev-stage-receiver/v1",
+  "core_workflow": ".github/workflows/dev-propagation.yml",
+  "fanout_workflow": "dispatch-unity-promotion.yml",
+  "staged_applications": true,
+  "applications": [
+    "cwru-non-academic/GUI_Unity_WSS_Application"
+  ]
+}

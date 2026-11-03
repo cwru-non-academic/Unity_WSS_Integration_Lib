@@ -1,6 +1,17 @@
 name: Dispatch GUI Integration promotion
-run-name: Dispatch GUI promotion for ${{ github.event.pull_request.merge_commit_sha }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Resume application promotion / wss-{0}', inputs.producer_run_id) || format('Dispatch GUI promotion for {0}', github.event.pull_request.merge_commit_sha) }}
 on:
+  workflow_dispatch:
+    inputs:
+      producer_run_id:
+        required: true
+        type: string
+      barrier_run_id:
+        required: true
+        type: string
+      barrier_attempt:
+        required: true
+        type: string
   pull_request_target:
     types: [closed]
     branches: [dev]
@@ -15,10 +26,11 @@ jobs:
   dispatch:
     name: Dispatch GUI promotion
     if: >-
-      github.event.pull_request.merged == true &&
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.type == 'Bot' &&
-      startsWith(github.event.pull_request.head.ref, 'automation/unity-wss-')
+      startsWith(github.event.pull_request.head.ref, 'automation/unity-wss-'))
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -43,12 +55,31 @@ jobs:
           permission-contents: read
           permission-actions: read
           permission-pull-requests: read
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          repository: cwru-non-academic/WSSCore
+          ref: main
+          token: ${{ steps.read.outputs.token }}
+          path: .core-stage
+          persist-credentials: false
+      - name: Require staged integration barrier or verified legacy producer
+        id: stage
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          PRODUCER_RUN_ID: ${{ inputs.producer_run_id }}
+          BARRIER_RUN_ID: ${{ inputs.barrier_run_id }}
+          BARRIER_ATTEMPT: ${{ inputs.barrier_attempt }}
+        run: ./.github/scripts/Prepare-StagedApplicationFanout.ps1 -Receiver unity -RecordPath .github/unity-candidate.json -WorkRoot "$env:RUNNER_TEMP/gui-stage"
       - name: Validate merged dependency-only PR, provenance and normal CI
+        if: steps.stage.outputs.dispatch_allowed == 'true'
         id: validate
         shell: pwsh
         env:
           GH_TOKEN: ${{ steps.read.outputs.token }}
-        run: ./.github/scripts/Dispatch-UnityGui.ps1 -EventPath $env:GITHUB_EVENT_PATH -WorkRoot "$env:RUNNER_TEMP/unity-dispatch" -ValidateOnly
+          FANOUT_EVENT: ${{ steps.stage.outputs.event_path }}
+        run: ./.github/scripts/Dispatch-UnityGui.ps1 -EventPath $env:FANOUT_EVENT -WorkRoot "$env:RUNNER_TEMP/unity-dispatch" -ValidateOnly
       - name: Mint GUI Actions token after validation
         if: steps.validate.outputs.dispatch_needed == 'true'
         uses: actions/create-github-app-token@v2

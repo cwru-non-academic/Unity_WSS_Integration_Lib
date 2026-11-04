@@ -13,17 +13,11 @@ if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { thr
 Assert-UnityApproval $approval (Join-Path $WorkRoot 'evidence') $config
 Assert-UnityMergedWrapper $pr.merge_commit_sha ([string]$pr.number) $approval
 $body=@{ref='dev';inputs=@{wrapper_sha=$pr.merge_commit_sha;wrapper_pr=[string]$pr.number;approval_json=($approval | ConvertTo-Json -Depth 8 -Compress)}} | ConvertTo-Json -Depth 6 -Compress
-$pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityGuiRepository/actions/workflows/promote-integration.yml/runs?event=workflow_dispatch&per_page=100") | ConvertFrom-Json
-$existing=@($pages | ForEach-Object { $_.workflow_runs } | Where-Object { $_.display_title -ceq "Promote Integration $($pr.merge_commit_sha) / wss-$($approval.candidate.run_id)-$($approval.candidate.artifact_id)" })
-if ($existing.Count -gt 1) { throw 'Ambiguous prior GUI dispatch; inspect manually.' }
-if ($existing.Count -eq 1) { 'dispatch_needed=false' >> $env:GITHUB_OUTPUT; Write-Output 'Prior correlated GUI promotion exists; no redispatch.'; exit 0 }
+Assert-UnityFanoutSources $pr.merge_commit_sha $approval.gui.source_sha
+if (Get-UnityGuiDispatchReuse $approval $pr.merge_commit_sha) { 'dispatch_needed=false' >> $env:GITHUB_OUTPUT; Write-Output 'Exact successful GUI promotion verified; no redispatch.'; exit 0 }
+Assert-UnityGuiDispatchIntent $pr.merge_commit_sha
 [IO.File]::WriteAllText((Join-Path $WorkRoot 'gui-dispatch.json'),$body)
 'dispatch_needed=true' >> $env:GITHUB_OUTPUT
 if ($ValidateOnly) { exit 0 }
 if (!$env:UNITY_DISPATCH_TOKEN) { throw 'Scoped GUI Actions-write token required after validation.' }
-$readToken=$env:GH_TOKEN
-try {
-    $env:GH_TOKEN=$env:UNITY_DISPATCH_TOKEN
-    $body | & gh api --method POST "repos/$UnityGuiRepository/actions/workflows/promote-integration.yml/dispatches" --input -
-    if ($LASTEXITCODE -ne 0) { throw 'GUI dispatch failed/uncertain; inspect before retrying.' }
-} finally { $env:GH_TOKEN=$readToken }
+Send-UnityGuiDispatch (Join-Path $WorkRoot 'gui-dispatch.json') $env:GH_TOKEN $env:UNITY_DISPATCH_TOKEN

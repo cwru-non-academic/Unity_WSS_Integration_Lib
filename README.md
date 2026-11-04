@@ -72,3 +72,11 @@ The separate `Invoke-BleLifecycleConformance.ps1` suite runs the same ten canoni
 
 
 Source synchronization may retain an exact legacy 18-file committed payload without adopting new Core bytes. The platform consumer reads the facade's declared capability: a declared macOS backend requires both matching managed/native files; an undeclared legacy backend must carry neither and is explicitly unsupported on macOS. Candidate projection stays on the strict 27-file universal / 20-file Unity path. link.xml preserves the reflected Mono bootstrap when the macOS assembly is present; it does not enable IL2CPP or manufacture backend support.
+
+Dev release acceptance uses `release-receipt.yml` with the exact Core producer run
+and frozen plan ID. It emits a read-only receipt after the human-reviewed bot
+merge, paired preflights, candidate-byte/projection checks and fresh final-merge
+CI. GUI acceptance additionally verifies the actual wrapper gitlink and its
+post-merge preflight. Main supplies registered trusted tooling; stable releases
+remain disabled. Coverage describes the .NET harness, not Unity Editor/Player,
+IL2CPP or physical BLE validation.

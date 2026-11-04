@@ -1,4 +1,5 @@
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/MacOSConsumerContract.ps1"
 
 function Wait-UnityRun([string]$Repository,[string]$RunId,[string]$Sha,[string]$Workflow,[string]$Event,[int]$TimeoutSeconds=2400) {
     Assert-UnitySha $Sha
@@ -107,9 +108,30 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
         $matching=@($pages | ForEach-Object { $_.jobs } | Where-Object { ($_.name -split ' / ')[-1] -ceq "Preflight platform compatibility ($platform)" })
         if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Candidate platform validation missing/skipped/failed: $platform" }
     }
+    $macProofs=@()
+    foreach ($arch in @(@('x64','X64'),@('arm64','Arm64'))) {
+        $macRoot="$Root-macos-$($arch[0])"
+        if (Test-Path -LiteralPath $macRoot) { throw 'Mac evidence destination must be new.' }
+        $null=Invoke-UnityGh @('run','download',$RunId,'--repo',$Repository,'--name',"unity-preflight-platform-$Role-macOS-$($arch[0])",'--dir',$macRoot)
+        $null=Assert-MacOSConsumerProbe (Join-Path $macRoot 'platform-result.json') $arch[1] -RequireBackend
+        $proof=Get-Content -LiteralPath (Join-Path $macRoot 'platform-evidence.json') -Raw | ConvertFrom-Json
+        Assert-UnitySameCandidate $proof.candidate $Candidate
+        if ($proof.schema -cne 'wss-dotnet-platform-evidence/v1' -or $proof.execution -cne 'dotnet' -or $proof.unity_executed -cne $false -or
+            $proof.mode -cne 'candidate' -or $proof.role -cne $Role -or $proof.run_repository -cne $Repository -or
+            [string]$proof.run_id -cne $RunId -or $proof.run_sha -cne $SourceSha -or
+            (Get-FileHash -LiteralPath (Join-Path $macRoot 'platform-result.json')).Hash.ToLowerInvariant() -cne $proof.platform_result_sha256) {
+            throw "Invalid macOS $($arch[0]) source/run/probe binding."
+        }
+        $macProofs+=$proof
+    }
     if (Test-Path -LiteralPath $Root) { throw 'Evidence download destination must be new.' }
     $null=Invoke-UnityGh @('run','download',$RunId,'--repo',$Repository,'--name','unity-preflight-evidence','--dir',$Root)
-    Assert-UnityEvidenceFiles $Root $Repository $RunId $SourceSha $Role $Candidate $Config
+    $e=Assert-UnityEvidenceFiles $Root $Repository $RunId $SourceSha $Role $Candidate $Config
+    foreach ($proof in $macProofs) {
+        if ($proof.wrapper_sha -cne $e.wrapper_sha -or $proof.gui_sha -cne $e.gui_sha -or $proof.projection_sha256 -cne $e.projection_sha256 -or
+            $proof.fixture_sha -cne $e.fixture_sha -or $proof.fixture_sha256 -cne $e.fixture_sha256) { throw 'Mac architectures did not test the same approved sources/projection/fixture.' }
+    }
+    $e
 }
 function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,$Config) {
     $files=@(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })

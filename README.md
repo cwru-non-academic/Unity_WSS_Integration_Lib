@@ -51,6 +51,8 @@ All documentation regarding hardware, API, and communication protocols can be fo
 
 This branch currently carries the 20-file payload, including the managed and native macOS BLE backend. The following platform and validation limits still apply.
 
+The legacy 18-file main baseline has no macOS BLE backend. The macOS importer and backend requirements below apply only after adopting a declared macOS payload; they do not establish support for that legacy payload.
+
 Select `BLE` with the existing transport controls; automatic discovery, `name:` and `id:` selectors retain their existing meaning. Windows uses the registered Windows backend. macOS Editor/standalone uses `MacBleBackend.Register()` with Mono. Both macOS plugin importers are restricted to OSX Editor and OSXUniversal standalone, use AnyCPU for the universal native binary, and exclude `ENABLE_IL2CPP`. Unity Linux BLE and macOS IL2CPP are explicitly unsupported; no new backend or AOT callback bridge is inferred from Core support.
 
 macOS needs both `backends/macos/WSS.Transport.BLE.MacOS.dll` and `libwss_macos_ble.dylib`, macOS 11 or newer, and a compatible arm64/x86_64 host. Before shipping a Mac Player, the application maintainer must choose a supported deployment target and supply its Bluetooth Usage Description/authorization configuration. Existing application settings and stimulation configuration, including custom `0x80` targets, are not changed automatically. See [Unity macOS Player settings](https://docs.unity3d.com/2022.3/Documentation/Manual/PlayerSettings-macOS.html).

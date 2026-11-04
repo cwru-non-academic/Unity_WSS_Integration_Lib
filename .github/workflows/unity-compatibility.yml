@@ -24,7 +24,9 @@ jobs:
           persist-credentials: false
       - name: Verify promotion evidence and dispatch guards
         shell: pwsh
-        run: ./.github/scripts/tests/UnityPromotion.Tests.ps1
+        run: |
+          ./.github/scripts/tests/UnityPromotion.Tests.ps1
+          ./.github/scripts/tests/WssReleaseReceipt.Tests.ps1
   validate:
     uses: ./.github/workflows/_unity-validation.yml
     with:

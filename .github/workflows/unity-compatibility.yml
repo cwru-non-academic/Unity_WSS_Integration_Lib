@@ -27,6 +27,7 @@ jobs:
         run: |
           ./.github/scripts/tests/UnityPromotion.Tests.ps1
           ./.github/scripts/tests/WssReleaseReceipt.Tests.ps1
+          ./.github/scripts/tests/MacOSConsumerContract.Tests.ps1
   validate:
     uses: ./.github/workflows/_unity-validation.yml
     with:
@@ -57,7 +58,6 @@ jobs:
         include:
           - {os: windows-2022, label: Windows}
           - {os: ubuntu-latest, label: Ubuntu}
-          - {os: macos-latest, label: macOS}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,3 +99,86 @@ jobs:
             ${{ runner.temp }}/platform-results/conformance/*.json
             ${{ runner.temp }}/platform-results/conformance/*.xml
             ${{ runner.temp }}/platform-results/conformance/*.log
+
+  macos-consumers:
+    name: Integration macOS consumer (${{ matrix.cpu }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-15-intel, label: macOS-x64, cpu: Intel x64, uname: x86_64}
+          - {os: macos-14, label: macOS-arm64, cpu: Apple Silicon arm64, uname: arm64}
+    steps:
+      - name: Require the native Mac runner architecture
+        shell: pwsh
+        env:
+          EXPECTED_UNAME: ${{ matrix.uname }}
+        run: |
+          if (!$IsMacOS -or (& uname -m) -cne $env:EXPECTED_UNAME) { throw 'Native macOS runner architecture mismatch.' }
+      - uses: actions/checkout@v4
+        with:
+          path: wrapper
+          lfs: true
+          persist-credentials: false
+      - name: Resolve pinned fixture and SDK
+        id: sources
+        shell: pwsh
+        run: |
+          . ./wrapper/.github/scripts/UnityContract.ps1
+          $config = Read-UnityConfig ./wrapper/.github/unity-ci.json
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
+          "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: ${{ steps.sources.outputs.fixture }}
+          path: fixture
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ steps.sources.outputs.sdk }}
+      - name: Verify production commands and packaged transport selection (.NET, no Unity engine)
+        shell: pwsh
+        env:
+          WRAPPER_SHA: ${{ github.sha }}
+        run: |
+          ./wrapper/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -ConfigPath "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-platform-${{ matrix.label }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/platform-results/*.json
+            ${{ runner.temp }}/platform-results/*.log
+            ${{ runner.temp }}/platform-results/conformance/*.json
+            ${{ runner.temp }}/platform-results/conformance/*.xml
+            ${{ runner.temp }}/platform-results/conformance/*.log
+
+  macos:
+    name: Integration compatibility (macOS)
+    if: always()
+    needs: macos-consumers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: integration-platform-macOS-x64
+          path: ${{ runner.temp }}/macos-evidence/x64
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: integration-platform-macOS-arm64
+          path: ${{ runner.temp }}/macos-evidence/arm64
+      - name: Require Intel and Apple Silicon consumer success
+        shell: pwsh
+        env:
+          MATRIX_RESULT: ${{ needs.macos-consumers.result }}
+        run: ./.github/scripts/Test-MacOSConsumers.ps1 -EvidenceRoot "$env:RUNNER_TEMP/macos-evidence" -MatrixResult $env:MATRIX_RESULT

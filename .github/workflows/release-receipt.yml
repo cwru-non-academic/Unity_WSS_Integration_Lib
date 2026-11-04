@@ -1,0 +1,79 @@
+name: Emit dev release acceptance receipt
+run-name: WSS acceptance unity-wrapper ${{ inputs.plan_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      producer_run_id:
+        required: true
+        type: string
+      plan_id:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: acceptance-unity-wrapper-${{ inputs.plan_id }}
+  cancel-in-progress: false
+jobs:
+  receipt:
+    name: Verify reviewed Unity merge and exact release acceptance
+    if: github.repository == 'cwru-non-academic/Unity_WSS_Integration_Lib' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: read
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: |
+            WSSCore
+            Unity_WSS_Integration_Lib
+            GUI_Unity_WSS_Application
+          permission-contents: read
+          permission-actions: read
+          permission-pull-requests: read
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .tools
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: main
+          path: .validation-tools
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: .accepted
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: dev
+          path: .integration
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify full Unity preflights, reviewed merges, payload and fresh CI
+        id: receipt
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          PRODUCER_RUN: ${{ inputs.producer_run_id }}
+          PLAN_ID: ${{ inputs.plan_id }}
+        run: ./.tools/.github/scripts/Write-ReleaseReceipt.ps1 -TargetId unity-wrapper -ProducerRunId $env:PRODUCER_RUN -PlanId $env:PLAN_ID
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.receipt.outputs.artifact_name }}
+          path: receipt-output/receipt.json
+          if-no-files-found: error

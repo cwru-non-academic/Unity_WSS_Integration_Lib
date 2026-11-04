@@ -80,6 +80,24 @@ jobs:
           GH_TOKEN: ${{ steps.read.outputs.token }}
           FANOUT_EVENT: ${{ steps.stage.outputs.event_path }}
         run: ./.github/scripts/Dispatch-UnityGui.ps1 -EventPath $env:FANOUT_EVENT -WorkRoot "$env:RUNNER_TEMP/unity-dispatch" -ValidateOnly
+      - name: Record dispatch intent before application write credentials
+        if: steps.validate.outputs.dispatch_needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-gui-dispatch-${{ steps.stage.outputs.merge_sha }}
+          path: ${{ runner.temp }}/unity-dispatch/gui-dispatch.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Reverify shared barrier immediately before application write credentials
+        if: steps.validate.outputs.dispatch_needed == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+          PRODUCER_RUN_ID: ${{ inputs.producer_run_id }}
+          BARRIER_RUN_ID: ${{ inputs.barrier_run_id }}
+          BARRIER_ATTEMPT: ${{ inputs.barrier_attempt }}
+          EXPECTED_MERGE_SHA: ${{ steps.stage.outputs.merge_sha }}
+        run: ./.github/scripts/Prepare-StagedApplicationFanout.ps1 -Receiver unity -RecordPath .github/unity-candidate.json -WorkRoot "$env:RUNNER_TEMP/gui-stage-recheck" -ExpectedMergeSha $env:EXPECTED_MERGE_SHA
       - name: Mint GUI Actions token after validation
         if: steps.validate.outputs.dispatch_needed == 'true'
         uses: actions/create-github-app-token@v2
@@ -95,6 +113,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ steps.dispatch.outputs.token }}
+          UNITY_DISPATCH_READ_TOKEN: ${{ steps.read.outputs.token }}
         run: |
-          gh api --method POST repos/cwru-non-academic/GUI_Unity_WSS_Application/actions/workflows/promote-integration.yml/dispatches --input "$env:RUNNER_TEMP/unity-dispatch/gui-dispatch.json"
-          if ($LASTEXITCODE -ne 0) { throw 'Dispatch failed or uncertain; inspect before replay.' }
+          . ./.github/scripts/UnityPromotion.ps1
+          Send-UnityGuiDispatch "$env:RUNNER_TEMP/unity-dispatch/gui-dispatch.json" $env:UNITY_DISPATCH_READ_TOKEN $env:GH_TOKEN

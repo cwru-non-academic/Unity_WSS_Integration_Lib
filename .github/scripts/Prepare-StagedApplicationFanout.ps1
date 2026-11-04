@@ -2,9 +2,11 @@ param(
     [Parameter(Mandatory)][ValidateSet('csharp','unity')][string]$Receiver,
     [Parameter(Mandatory)][string]$RecordPath,
     [Parameter(Mandatory)][string]$WorkRoot,
-    [string]$CoreRoot = '.core-stage'
+    [string]$CoreRoot = '.core-stage',
+    [string]$ExpectedMergeSha = ''
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/UnityPromotion.ps1"
 $core = 'cwru-non-academic/WSSCore'
 function Read-GitHub([string]$Path) {
     $raw = & gh api $Path
@@ -22,6 +24,7 @@ function Write-ReadyEvent($PullRequest) {
         $PullRequest.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or $PullRequest.user.type -cne 'Bot') {
         throw 'Expected a merged same-repository bot dependency PR targeting dev.'
     }
+    if ($ExpectedMergeSha) { Assert-UnityUnchangedFanoutBarrier $ExpectedMergeSha $PullRequest.merge_commit_sha }
     New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
     $path = Join-Path $WorkRoot 'fanout-event.json'
     @{pull_request=$PullRequest;repository=@{full_name=$env:GITHUB_REPOSITORY}} |
@@ -81,6 +84,7 @@ if ($env:GITHUB_EVENT_NAME -ceq 'workflow_dispatch') {
             (@($target[0].applications | Sort-Object) -join ',') -cne (@($cap.applications | Sort-Object) -join ',')) {
             throw 'Producer staging policy does not match this receiver.'
         }
+        if ($ExpectedMergeSha) { throw 'Shared barrier no longer authorizes application fanout.' }
         'dispatch_allowed=false' >> $env:GITHUB_OUTPUT
         "Waiting for Core's complete integration barrier for producer $($candidate.run_id); no application write token requested." >> $env:GITHUB_STEP_SUMMARY
     }

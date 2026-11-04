@@ -185,6 +185,87 @@ function Assert-UnityRemoteProjection([string]$Sha,$Record) {
         }
     }
 }
+function Get-UnityReviewedPrRun([object[]]$Runs,$Pr,[string]$PrNumber) {
+    $matching=@($Runs | Where-Object {
+        $_.repository.full_name -ceq $UnityWrapperRepository -and
+        $_.head_repository.full_name -ceq $UnityWrapperRepository -and
+        $_.path -ceq '.github/workflows/unity-compatibility.yml' -and
+        $_.event -ceq 'pull_request' -and $_.head_sha -ceq $Pr.head.sha -and
+        $_.head_branch -ceq $Pr.head.ref -and
+        (@($_.pull_requests).Count -eq 0 -or
+            (@($_.pull_requests).Count -eq 1 -and [string]$_.pull_requests[0].number -ceq $PrNumber))
+    } | Sort-Object { [long]$_.id } -Descending)
+    if ($matching.Count -eq 0 -or $matching[0].status -cne 'completed' -or $matching[0].conclusion -cne 'success') {
+        throw 'Latest final-head normal wrapper PR CI has not succeeded.'
+    }
+    $matching[0]
+}
+function Assert-UnityRequiredWrapperJobs([object[]]$Jobs) {
+    foreach ($name in @('Integration behavioral tests','Integration compatibility (Windows)','Integration compatibility (Ubuntu)','Integration compatibility (macOS)')) {
+        $matching=@($Jobs | Where-Object { $_.name -ceq $name })
+        if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Normal committed-state validation missing/skipped/failed: $name" }
+    }
+}
+function Assert-UnityFanoutSources([string]$WrapperSha,[string]$GuiSha) {
+    Assert-UnitySha $WrapperSha
+    Assert-UnitySha $GuiSha
+    foreach ($entry in @(@($UnityWrapperRepository,$WrapperSha),@($UnityGuiRepository,$GuiSha))) {
+        $head=Invoke-UnityGh @('api',"repos/$($entry[0])/git/ref/heads/dev") | ConvertFrom-Json
+        if ($head.object.sha -cne $entry[1]) { throw "Fanout source moved: $($entry[0]); require fresh reviewed evidence." }
+    }
+}
+function Assert-UnityUnchangedFanoutBarrier([string]$ExpectedMergeSha,[string]$CurrentMergeSha) {
+    Assert-UnitySha $ExpectedMergeSha
+    Assert-UnitySha $CurrentMergeSha
+    if ($CurrentMergeSha -cne $ExpectedMergeSha) { throw 'Shared barrier integration changed before application write credentials.' }
+}
+function Get-UnityGuiDispatchReuse($Approval,[string]$WrapperSha) {
+    $title="Promote Integration $WrapperSha / wss-$($Approval.candidate.run_id)-$($Approval.candidate.artifact_id)"
+    $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityGuiRepository/actions/workflows/promote-integration.yml/runs?event=workflow_dispatch&per_page=100") | ConvertFrom-Json
+    $existing=@($pages | ForEach-Object { $_.workflow_runs } | Where-Object { $_.display_title -ceq $title })
+    if ($existing.Count -gt 1) { throw 'Ambiguous prior GUI dispatch; inspect manually.' }
+    if ($existing.Count -eq 0) { return $false }
+    if ([string]$existing[0].id -cnotmatch '^[1-9][0-9]*$') { throw 'Invalid prior GUI run identity.' }
+    $run=Invoke-UnityGh @('api',"repos/$UnityGuiRepository/actions/runs/$($existing[0].id)") | ConvertFrom-Json
+    if ($run.id -ne $existing[0].id -or $run.repository.full_name -cne $UnityGuiRepository -or
+        $run.head_repository.full_name -cne $UnityGuiRepository -or
+        $run.path -cne '.github/workflows/promote-integration.yml' -or $run.event -cne 'workflow_dispatch' -or
+        $run.head_branch -cne 'dev' -or $run.head_sha -cne $Approval.gui.source_sha -or $run.display_title -cne $title) {
+        throw 'Prior GUI dispatch identity mismatch; inspect before any write.'
+    }
+    if ($run.status -cne 'completed' -or $run.conclusion -cne 'success') {
+        throw 'Prior GUI dispatch failed or remains uncertain; inspect before any retry.'
+    }
+    return $true
+}
+function Assert-UnityGuiDispatchIntent([string]$WrapperSha,[switch]$RequireCurrent) {
+    if ($env:GITHUB_RUN_ID -cnotmatch '^[1-9][0-9]*$' -or $env:GITHUB_RUN_ATTEMPT -cne '1') {
+        throw 'Dispatch recovery requires inspection; automatic run-attempt replay is forbidden.'
+    }
+    $name="unity-gui-dispatch-$WrapperSha"
+    $pages=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityWrapperRepository/actions/artifacts?name=$name&per_page=100") | ConvertFrom-Json
+    $artifacts=@($pages | ForEach-Object { $_.artifacts } | Where-Object { $_.name -ceq $name })
+    if (@($artifacts | Where-Object { [string]$_.workflow_run.id -cne $env:GITHUB_RUN_ID -or $_.expired -or $_.workflow_run.head_sha -cne $env:GITHUB_SHA }).Count -ne 0 -or $artifacts.Count -gt 1) {
+        throw 'Prior or uncertain GUI dispatch intent exists; inspect before any replay.'
+    }
+    if ($RequireCurrent -and $artifacts.Count -ne 1) { throw 'Durable current GUI dispatch intent required before application writes.' }
+}
+function Send-UnityGuiDispatch([string]$RequestPath,[string]$ReadToken,[string]$WriteToken) {
+    if (!$ReadToken -or !$WriteToken) { throw 'Separate read and scoped application-write tokens required.' }
+    $request=Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json
+    if ($request.ref -cne 'dev') { throw 'GUI dispatch must target dev.' }
+    $approval=$request.inputs.approval_json | ConvertFrom-Json
+    $original=$env:GH_TOKEN
+    try {
+        $env:GH_TOKEN=$ReadToken
+        Assert-UnityFanoutSources $request.inputs.wrapper_sha $approval.gui.source_sha
+        if (Get-UnityGuiDispatchReuse $approval $request.inputs.wrapper_sha) { return }
+        Assert-UnityGuiDispatchIntent $request.inputs.wrapper_sha -RequireCurrent
+        $env:GH_TOKEN=$WriteToken
+        try { $null=Invoke-UnityGh @('api','--method','POST',"repos/$UnityGuiRepository/actions/workflows/promote-integration.yml/dispatches",'--input',$RequestPath) }
+        catch { throw 'GUI dispatch failed or uncertain; inspect remote state before any replay.' }
+    } finally { $env:GH_TOKEN=$original }
+}
 function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     Assert-UnitySha $Sha
     if ($PrNumber -cnotmatch '^[1-9][0-9]*$') { throw 'Invalid wrapper PR number.' }
@@ -201,24 +282,9 @@ function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     # GitHub may clear pull_requests after merge. Bind an empty association to
     # the reviewed PR's exact repository, workflow, event, head SHA and branch.
     # Nonempty associations must name only that PR; conflicting evidence fails.
-    $runs=@($pages | ForEach-Object { $_.workflow_runs } | Where-Object {
-        $_.repository.full_name -ceq $UnityWrapperRepository -and
-        $_.head_repository.full_name -ceq $UnityWrapperRepository -and
-        $_.path -ceq '.github/workflows/unity-compatibility.yml' -and
-        $_.event -ceq 'pull_request' -and $_.head_sha -ceq $pr.head.sha -and
-        $_.head_branch -ceq $pr.head.ref -and
-        (@($_.pull_requests).Count -eq 0 -or
-            (@($_.pull_requests).Count -eq 1 -and
-                [string]$_.pull_requests[0].number -ceq $PrNumber))
-    } | Sort-Object { [long]$_.id } -Descending)
-    if ($runs.Count -eq 0 -or $runs[0].status -cne 'completed' -or $runs[0].conclusion -cne 'success') { throw 'Latest final-head normal wrapper PR CI has not succeeded.' }
-    $jobs=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityWrapperRepository/actions/runs/$($runs[0].id)/jobs?per_page=100") | ConvertFrom-Json
-    $required=@($jobs | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq 'Integration behavioral tests' })
-    if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw 'Normal committed-state acceptance missing/skipped/failed.' }
-    foreach ($platform in @('Windows','Ubuntu','macOS')) {
-        $matching=@($jobs | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq "Integration compatibility ($platform)" })
-        if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Normal committed-state platform validation missing/skipped/failed: $platform" }
-    }
+    $run=Get-UnityReviewedPrRun @($pages | ForEach-Object { $_.workflow_runs }) $pr $PrNumber
+    $jobs=Invoke-UnityGh @('api','--paginate','--slurp',"repos/$UnityWrapperRepository/actions/runs/$($run.id)/jobs?per_page=100") | ConvertFrom-Json
+    Assert-UnityRequiredWrapperJobs @($jobs | ForEach-Object { $_.jobs })
     $content=Invoke-UnityGh @('api',"repos/$UnityWrapperRepository/contents/.github/unity-candidate.json?ref=$Sha") | ConvertFrom-Json
     $record=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($content.content)) | ConvertFrom-Json
     Assert-UnitySameCandidate $record.candidate $Approval.candidate

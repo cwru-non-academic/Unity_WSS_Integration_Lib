@@ -48,6 +48,13 @@ $result=Join-Path $OutputRoot 'platform-result.json'
 & dotnet (Join-Path $publish 'Wss.PlatformCompatibility.dll') $projection $result *> (Join-Path $OutputRoot 'platform.log')
 Get-Content -LiteralPath (Join-Path $OutputRoot 'platform.log') | Write-Output
 if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $result)) { throw 'Production transport selection/load probe failed.' }
+if ($IsMacOS) {
+    . "$PSScriptRoot/wss-ci/Evidence.ps1"
+    $probeRecord=Get-Content -LiteralPath $result -Raw|ConvertFrom-Json
+    $identity=New-WssCiEvidenceIdentity $env:GITHUB_REPOSITORY $env:GITHUB_RUN_ID $env:GITHUB_RUN_ATTEMPT $env:GITHUB_SHA $probeRecord.architecture
+    $probeRecord|Add-Member -NotePropertyName ci -NotePropertyValue $identity
+    $probeRecord|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $result
+}
 $badRoot=Join-Path $OutputRoot 'capability-negative'
 $null=New-Item -ItemType Directory -Path $badRoot
 if ('backends/macos/WSS.Transport.BLE.MacOS.dll' -cnotin @(Get-UnityCommittedProjectionFiles $record)) {

@@ -98,8 +98,8 @@ function Read-UnityApprovalMarker([string]$Body,[string]$Destination) {
     $approval
 }
 function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,[string]$Root,$Config) {
-    $null=Wait-UnityRun $Repository $RunId $SourceSha 'wss-preflight.yml' 'workflow_dispatch'
-    $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$Repository/actions/runs/$RunId/jobs?per_page=100") | ConvertFrom-Json
+    $run=Wait-UnityRun $Repository $RunId $SourceSha 'wss-preflight.yml' 'workflow_dispatch'
+    $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$Repository/actions/runs/$RunId/attempts/$($run.run_attempt)/jobs?per_page=100") | ConvertFrom-Json
     $requiredName=if ($Role -ceq 'wrapper') { 'Preflight behavioral tests' } else { 'GUI general conformance' }
     $required=@($pages | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq $requiredName })
     if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw 'Required candidate acceptance job missing/skipped/failed.' }
@@ -112,7 +112,7 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
         $macRoot="$Root-macos-$($arch[0])"
         if (Test-Path -LiteralPath $macRoot) { throw 'Mac evidence destination must be new.' }
         $null=Invoke-UnityGh -Arguments @('run','download',$RunId,'--repo',$Repository,'--name',"unity-preflight-platform-$Role-macOS-$($arch[0])",'--dir',$macRoot)
-        $null=Assert-MacOSConsumerProbe (Join-Path $macRoot 'platform-result.json') $arch[1] -RequireBackend
+        $null=Assert-MacOSConsumerProbe (Join-Path $macRoot 'platform-result.json') $arch[1] -RequireBackend -Repository $Repository -RunId $RunId -Attempt ([string]$run.run_attempt) -SourceSha $SourceSha
         $proof=Get-Content -LiteralPath (Join-Path $macRoot 'platform-evidence.json') -Raw | ConvertFrom-Json
         Assert-UnitySameCandidate $proof.candidate $Candidate
         if ($proof.schema -cne 'wss-dotnet-platform-evidence/v1' -or $proof.execution -cne 'dotnet' -or $proof.unity_executed -cne $false -or

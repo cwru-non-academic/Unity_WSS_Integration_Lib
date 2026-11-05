@@ -109,7 +109,7 @@ jobs:
       matrix:
         include:
           - {os: macos-15-intel, label: macOS-x64, cpu: Intel x64, uname: x86_64}
-          - {os: macos-14, label: macOS-arm64, cpu: Apple Silicon arm64, uname: arm64}
+          - {os: macos-15, label: macOS-arm64, cpu: Apple Silicon arm64, uname: arm64}
     steps:
       - name: Require the native Mac runner architecture
         shell: pwsh

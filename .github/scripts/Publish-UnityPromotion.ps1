@@ -38,34 +38,25 @@ if ($role -ceq 'wrapper') {
     $entry=(Invoke-UnityGit $RepositoryRoot @('ls-files','--stage','--',$UnityGitlink)) -join ''
     if ($entry -cne "160000 $($prepared.wrapper_merge_sha) 0`t$UnityGitlink") { throw 'Staged GUI entry is not the accepted gitlink.' }
 }
-$changed=@(Invoke-UnityGit $RepositoryRoot @('diff','--cached','--name-only'))
-Assert-UnityDiff $changed $allowed
-if (@(Invoke-UnityGit $RepositoryRoot @('diff','--name-only','--ignore-submodules=all')).Count -ne 0) { throw 'Unstaged changes outside the intended promotion.' }
-$tree=(Invoke-UnityGit $RepositoryRoot @('write-tree')).Trim()
-$pulls=@(Invoke-UnityGh @('pr','list','--repo',$repo,'--state','all','--base','dev','--head',$branch,'--limit','2','--json','number,url,state,body,headRefOid') | ConvertFrom-Json)
-if ($pulls.Count -gt 1 -or ($pulls.Count -eq 1 -and $pulls[0].state -cne 'OPEN')) { throw 'Ambiguous or already closed/merged candidate PR; no replacement or rollback.' }
-$refs=@(Invoke-UnityGh @('api',"repos/$repo/git/matching-refs/heads/$branch") | ConvertFrom-Json | Where-Object { $_.ref -ceq "refs/heads/$branch" })
-if ($pulls.Count -eq 1) {
-    if ($refs.Count -ne 1 -or $pulls[0].headRefOid -cne $refs[0].object.sha -or !(($pulls[0].body -split "`r?`n") -ccontains $marker)) { throw 'Existing PR branch/metadata conflict.' }
-    if ($role -ceq 'gui' -and !(($pulls[0].body -split "`r?`n") -ccontains $guiMarker)) { throw 'Existing GUI PR does not carry the exact merged-wrapper preflight.' }
-    $remoteCommit=Invoke-UnityGh @('api',"repos/$repo/git/commits/$($refs[0].object.sha)") | ConvertFrom-Json
-    if ($remoteCommit.tree.sha -cne $tree -or @($remoteCommit.parents).Count -ne 1 -or $remoteCommit.parents[0].sha -cne $prepared.source_sha) { throw 'Existing PR is not the exact intended tree/source.' }
-    Write-Output "Reusing exact existing PR: $($pulls[0].url)"
-    exit 0
-}
-if ($refs.Count -ne 0) { throw 'Orphan candidate branch exists; inspect rather than overwriting.' }
-$null=Invoke-UnityGit $RepositoryRoot @('switch','-c',$branch)
-$null=Invoke-UnityGit $RepositoryRoot @('-c','user.name=WSS Unity automation','-c','user.email=wss-unity-automation@users.noreply.github.com','commit','-m',"Promote verified Unity WSS $($approval.candidate.run_id)")
-# Per-command credentials only; never alter Git global/system trust or credential configuration.
-$header=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('x-access-token:'+$env:UNITY_PUSH_TOKEN))
-Write-Output "::add-mask::$header"
-$null=Invoke-UnityGit $RepositoryRoot @('-c',"http.https://github.com/.extraheader=AUTHORIZATION: basic $header",'push','origin',"HEAD:refs/heads/$branch")
+# The adapter has verified/staged exact payload or gitlink bytes. One engine publishes.
 $bodyPath=Join-Path $WorkRoot 'pr-body.md'
-$body="Promotes the exact candidate accepted by both .NET preflights in the Unity repositories. Manual review/merge required; no player release.`n`n<!-- wss-unity-promotion:v1 -->`n$marker`n"
-if ($role -ceq 'gui') { $body+="`nActual merged-wrapper GUI preflight: https://github.com/$UnityGuiRepository/actions/runs/$($prepared.gui_preflight_run_id)`n$guiMarker`n" }
+$body="Promotes the exact candidate accepted by reviewed Unity evidence. Manual review/merge required.`n`n$marker`n"
+$markers=@($marker)
+$parents=@{}; $gitlinks=@{}
+if($role -cne 'wrapper') {
+    $body+="`n$guiMarker`n"
+    $markers+=$guiMarker
+    $parents['cwru-non-academic/Unity_WSS_Integration_Lib']=$prepared.wrapper_merge_sha
+    $gitlinks[$allowed[0]]=$prepared.wrapper_merge_sha
+}
+if($role -ceq 'wrapper' -and 'unity' -ceq 'unity'){$body="<!-- wss-unity-promotion:v1 -->`n"+$body}
 [IO.File]::WriteAllText($bodyPath,$body)
-$readToken=$env:GH_TOKEN
+$descriptor=@{target_id="unity-$role";repository_root=[IO.Path]::GetFullPath($RepositoryRoot);source_sha=$prepared.source_sha;candidate=$approval.candidate;branch=$branch;allowed_paths=@($allowed);markers=$markers;gitlinks=$gitlinks;parent_heads=$parents;body_path=[IO.Path]::GetFullPath($bodyPath);title="Promote verified Unity WSS $($approval.candidate.run_id)";commit_message="Promote verified Unity WSS $($approval.candidate.run_id)"}
+$descriptorPath=Join-Path $WorkRoot 'publication.json'
+$descriptor|ConvertTo-Json -Depth 16|Set-Content -LiteralPath $descriptorPath
+$saved=$env:WSS_PUSH_TOKEN
 try {
-    $env:GH_TOKEN=$env:UNITY_PUSH_TOKEN
-    $null=Invoke-UnityGh @('pr','create','--repo',$repo,'--base','dev','--head',$branch,'--title',"Promote Unity WSS $($approval.candidate.run_id)",'--body-file',$bodyPath)
-} finally { $env:GH_TOKEN=$readToken }
+    $env:WSS_PUSH_TOKEN=$env:UNITY_PUSH_TOKEN
+    & node (Join-Path $PSScriptRoot 'wss-ci/promotion.mjs') $descriptorPath
+    if($LASTEXITCODE -ne 0){throw 'Common promotion publication failed or is uncertain; inspect before retry.'}
+} finally {$env:WSS_PUSH_TOKEN=$saved}

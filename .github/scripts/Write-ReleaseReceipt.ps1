@@ -6,9 +6,12 @@ param(
     [string] $ValidatorRoot = '.validation-tools',
     [string] $AcceptedRoot = '.accepted',
     [string] $IntegrationRoot = '.integration',
-    [string] $OutputRoot = 'receipt-output'
+    [string] $OutputRoot = 'receipt-output',
+    [string] $ContextPath = '',
+    [string] $WorkRoot = '',
+    [string] $OutputPath = ''
 )
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 function Invoke-ReceiptGh([string[]] $Arguments) {
     $result = & gh @Arguments
@@ -44,23 +47,28 @@ function MergedPr([string] $Repository,[string] $Sha) {
     $pr
 }
 
-$core='cwru-non-academic/WSSCore'
-$wrapper='cwru-non-academic/Unity_WSS_Integration_Lib'
-$gui='cwru-non-academic/GUI_Unity_WSS_Application'
-$repository=if ($TargetId -ceq 'unity-wrapper') { $wrapper } else { $gui }
-if ($env:GITHUB_REPOSITORY -cne $repository -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne 'refs/heads/dev') { throw 'Receipt emitter is restricted to its canonical dev dispatch.' }
-$work=Join-Path $env:RUNNER_TEMP ('unity-receipt-'+[IO.Path]::GetRandomFileName())
-$null=New-Item -ItemType Directory -Path $work
-$producer=Api "repos/$core/actions/runs/$ProducerRunId"
-if ($producer.repository.full_name -cne $core -or $producer.head_repository.full_name -cne $core -or $producer.path -cne '.github/workflows/artifacts.yml' -or $producer.event -cne 'push' -or $producer.head_branch -cne 'dev' -or $producer.status -cne 'completed' -or $producer.conclusion -cne 'success') { throw 'Plan is not from a successful canonical dev push.' }
-$plan=Download $core $ProducerRunId 'wss-propagation-plan' (Join-Path $work 'plan') 'plan.json'
-if ($plan.schema -cne 'wss-propagation-plan/v1' -or $plan.channel -cne 'dev' -or $plan.plan_id -cne $PlanId -or $plan.candidate.run_id -cne $ProducerRunId -or $plan.candidate.commit -cne $producer.head_sha) { throw 'Plan/input/producer mismatch.' }
-$hashCode='const fs=require("fs"),c=require("crypto");const sort=x=>Array.isArray(x)?x.map(sort):x&&typeof x==="object"?Object.fromEntries(Object.keys(x).sort().map(k=>[k,sort(x[k])])):x;const p=JSON.parse(fs.readFileSync(process.argv[1]));const hash=x=>c.createHash("sha256").update(JSON.stringify(sort(x))).digest("hex");const id=p.plan_id;delete p.plan_id;if(hash(p)!==id||hash(p.manifest)!==p.manifest_sha256)process.exit(1);'
-& node -e $hashCode (Join-Path $work 'plan/plan.json')
-if ($LASTEXITCODE -ne 0) { throw 'Frozen plan/manifest digest mismatch.' }
-$target=@($plan.manifest.targets | Where-Object id -CEQ $TargetId)
-if ($target.Count -ne 1 -or $target[0].repository -cne $repository -or $target[0].branch -cne 'dev') { throw 'Required target policy mismatch.' }
-$target=$target[0]
+
+# One shared Node engine owns receipt orchestration; this script is a rich-proof adapter.
+if (!$ContextPath) {
+    $env:TARGET_ID=$TargetId; $env:PRODUCER_RUN_ID=$ProducerRunId; $env:PLAN_ID=$PlanId
+    $config=@{sourceRoot=[IO.Path]::GetFullPath($AcceptedRoot);toolsRoot=[IO.Path]::GetFullPath($ToolsRoot);validatorRoot=[IO.Path]::GetFullPath($ValidatorRoot);integrationRoot=[IO.Path]::GetFullPath($(if ($TargetId.EndsWith('-wrapper')) {$AcceptedRoot}else{$IntegrationRoot}));outputRoot=[IO.Path]::GetFullPath($OutputRoot)}
+    $configPath=Join-Path $env:RUNNER_TEMP ('receipt-config-'+[guid]::NewGuid().ToString('N')+'.json')
+    $config | ConvertTo-Json | Set-Content -LiteralPath $configPath
+    try {
+        & node (Join-Path $ToolsRoot '.github/scripts/wss-ci/receipt.mjs') $configPath
+        if ($LASTEXITCODE -ne 0) { throw 'Shared read-only receipt verification failed.' }
+    } finally { Remove-Item -LiteralPath $configPath }
+    return
+}
+if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne 'refs/heads/dev') { throw 'Adapter is restricted to actual dev receipt execution.' }
+$ctx=Get-Content -LiteralPath $ContextPath -Raw | ConvertFrom-Json
+if ($ctx.target.id -cne $TargetId -or $ctx.head -cne $env:GITHUB_SHA -or $ctx.target.repository -cne $env:GITHUB_REPOSITORY) { throw 'Adapter source/role differs from receipt context.' }
+$plan=$ctx.plan; $target=$ctx.target; $acceptedSha=$ctx.head; $pr=$ctx.pr
+$AcceptedRoot=$ctx.paths.sourceRoot; $ToolsRoot=$ctx.paths.toolsRoot; $ValidatorRoot=$ctx.paths.validatorRoot; $IntegrationRoot=$ctx.paths.integrationRoot
+$core='cwru-non-academic/WSSCore'; $wrapper='cwru-non-academic/Unity_WSS_Integration_Lib'; $gui='cwru-non-academic/GUI_Unity_WSS_Application'; $repository=$target.repository
+if (Test-Path -LiteralPath $WorkRoot) { throw 'Rich proof validation workspace must be new.' }
+$null=New-Item -ItemType Directory -Path $WorkRoot
+$work=$WorkRoot
 foreach ($path in $target.trusted_paths) {
     if ((Invoke-ReceiptGit $AcceptedRoot -Arguments @('rev-parse',"HEAD:$path")) -cne $plan.target_snapshots.$TargetId.trusted.$path) { throw "Accepted receiver tooling differs: $path" }
 }
@@ -111,28 +119,5 @@ if ($TargetId -ceq 'unity-wrapper') {
 }
 Assert-UnityMergedWrapper $wrapperSha ([string]$wrapperPr.number) $approval
 Assert-UnityDiff @($files.filename) $(if ($TargetId -ceq 'unity-wrapper') { Get-UnityAllowedWrapperPaths } else { @($UnityGitlink) })
-$workflow=Split-Path $target.workflow -Leaf
-$runs=@(Pages "repos/$repository/actions/workflows/$workflow/runs?head_sha=$acceptedSha&per_page=100" 'workflow_runs' | Where-Object { $_.event -cin @('push','workflow_dispatch') } | Sort-Object { [long]$_.id } -Descending)
-if ($runs.Count -eq 0) { throw 'Fresh exact-merge normal CI has not run yet.' }
-$normal=$runs[0]
-$jobs=@(Pages "repos/$repository/actions/runs/$($normal.id)/attempts/$($normal.run_attempt)/jobs?per_page=100" 'jobs')
-Assert-WssReceiptNormalRun $normal $repository $target $acceptedSha $jobs
-if ([DateTimeOffset]::Parse($normal.created_at) -lt [DateTimeOffset]::Parse($pr.merged_at)) { throw 'Normal CI predates the accepted merge.' }
-foreach ($proof in $preflights) {
-    $candidate=Download $proof.repository $proof.run_id 'wss-candidate-provenance' (Join-Path $work ('normalized-'+$proof.run_id)) 'candidate.json'
-    Assert-UnitySameCandidate $candidate $plan.candidate
-}
-if ($acceptedSha -cne (Api "repos/$repository/git/ref/heads/dev").object.sha -or $wrapperSha -cne (Api "repos/$wrapper/git/ref/heads/dev").object.sha) { throw 'Accepted source moved during receipt validation.' }
-if (@($target.coverage | Where-Object { $_ -cin @('canonical-conformance','packaged-macos-ble-load','dotnet-harness-not-unity-editor') }).Count -ne 3 -or @($target.coverage).Count -ne 3) { throw 'Unexpected Unity coverage claims.' }
-$receipt=[ordered]@{
-    schema='wss-acceptance-receipt/v1';plan_id=$PlanId;channel='dev';target_id=$TargetId;candidate=$plan.candidate;mode='merged-pr'
-    merge=@{pr_number=[string]$pr.number;head_sha=$pr.head.sha;sha=$acceptedSha}
-    normal_ci=@{run_id=[string]$normal.id;attempt=[int]$normal.run_attempt}
-    preflights=$preflights;parents=$parents
-    emitter=@{run_id=$env:GITHUB_RUN_ID;attempt=[int]$env:GITHUB_RUN_ATTEMPT;source_sha=$acceptedSha;workflow='.github/workflows/release-receipt.yml'}
-    coverage=@($target.coverage)
-}
-$null=New-Item -ItemType Directory -Path $OutputRoot
-$receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $OutputRoot 'receipt.json') -Encoding utf8
-"artifact_name=wss-acceptance-$TargetId-$PlanId-a$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
 
+ConvertTo-Json -InputObject @($preflights) -Depth 8 | Set-Content -LiteralPath $OutputPath

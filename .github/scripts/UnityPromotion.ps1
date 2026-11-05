@@ -18,15 +18,14 @@ function Wait-UnityRun([string]$Repository,[string]$RunId,[string]$Sha,[string]$
 function Assert-UnityProducer($Candidate) {
     Assert-UnityCandidate $Candidate
     $run=Wait-UnityRun $Candidate.repository $Candidate.run_id $Candidate.commit 'artifacts.yml' 'push'
+    if ($run.run_attempt -lt 1) { throw 'Exact producer attempt is required.' }
     if ($run.head_branch -cne 'dev' -or $run.head_repository.full_name -cne $Candidate.repository -or $Candidate.archive -cne 'WSS-Universal-ci.zip') { throw 'Automatic Unity propagation requires the canonical Core dev push archive.' }
     $compare=Invoke-UnityGh -Arguments @('api',"repos/$($Candidate.repository)/compare/$($Candidate.commit)...dev") | ConvertFrom-Json
     if ($compare.status -cnotin @('ahead','identical')) { throw 'Producer commit is not contained in Core dev.' }
-    $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$($Candidate.repository)/actions/runs/$($Candidate.run_id)/jobs?per_page=100&filter=latest") | ConvertFrom-Json
+    $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$($Candidate.repository)/actions/runs/$($Candidate.run_id)/attempts/$($run.run_attempt)/jobs?per_page=100") | ConvertFrom-Json
     $jobs=@($pages | ForEach-Object { $_.jobs })
-    foreach ($name in @('Build and validate artifacts','Core conformance','Serial consumer (Windows)','Serial consumer (macOS)','Serial consumer (Linux)','BLE consumer (Windows)','BLE consumer (Linux)','Build macOS universal BLE bridge','BLE consumer (macOS x86_64)','BLE consumer (macOS arm64)','Core consumer (Windows)','Core consumer (macOS)','Core consumer (Linux)','Start routine downstream validation')) {
-        $matching=@($jobs | Where-Object { $_.name -ceq $name })
-        if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') { throw "Required Core producer job missing/skipped/failed: $name" }
-    }
+    . "$PSScriptRoot/wss-ci/Producer.ps1"
+    Assert-WssCiProducerJobs $jobs 'macos-ble-v1'
     $artifact=Invoke-UnityGh -Arguments @('api',"repos/$($Candidate.repository)/actions/artifacts/$($Candidate.artifact_id)") | ConvertFrom-Json
     if ($artifact.expired -or $artifact.name -cne 'universal-release-assets' -or [string]$artifact.workflow_run.id -cne [string]$Candidate.run_id -or $artifact.workflow_run.head_sha -cne $Candidate.commit) { throw 'Wrong/expired producer artifact.' }
 }

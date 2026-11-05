@@ -85,18 +85,10 @@ if (-not $match.Success -or $match.Groups['hash'].Value -ine $ExpectedSha256) { 
 $archive = Join-Path $downloadDir $ArchiveName
 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $ExpectedSha256) { throw 'Universal archive SHA-256 mismatch.' }
 
-# Validate ZIP paths and inventory before extraction, including case-colliding entries.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [IO.Compression.ZipFile]::OpenRead($archive)
-try {
-    $entries = @($zip.Entries | ForEach-Object { $_.FullName })
-    $expectedEntries = @($WssUniversalFiles | ForEach-Object { "WSS-Universal/$_" })
-    if ($entries.Count -ne $expectedEntries.Count -or
-        @($entries | Sort-Object -Unique).Count -ne $entries.Count -or
-        @(Compare-Object $expectedEntries $entries -CaseSensitive).Count -ne 0) {
-        throw 'ZIP does not contain the exact universal inventory under WSS-Universal/.'
-    }
-} finally { $zip.Dispose() }
+# Common archive safety implementation; only inventory selection is receiver-specific.
+. "$PSScriptRoot/wss-ci/Assert-UniversalArchive.ps1"
+$expectedFiles = @($WssUniversalFiles)
+$null = Get-WssUniversalArchiveHashes -Archive $archive -ExpectedSha256 $ExpectedSha256.ToLowerInvariant() -ExpectedFiles $expectedFiles
 Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $OutputRoot 'extracted')
 $root = (Resolve-Path -LiteralPath (Join-Path $OutputRoot 'extracted/WSS-Universal')).Path
 $provenance = [ordered]@{

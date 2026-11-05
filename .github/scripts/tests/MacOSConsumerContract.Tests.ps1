@@ -13,7 +13,7 @@ function Reject([scriptblock]$Action) {
 }
 function Probe([string]$Arch='Arm64') {
     [pscustomobject]@{schema='wss-dotnet-platform-probe/v1';execution='dotnet';unity_executed=$false;hardware_access=$false;
-        architecture=$Arch;os='macOS synthetic metadata fixture';ble='macOS native ABI fixture';macos_backend_declared=$true;macos_native_abi_verified=$true}
+        ci=(New-WssCiEvidenceIdentity $env:GITHUB_REPOSITORY $env:GITHUB_RUN_ID $env:GITHUB_RUN_ATTEMPT $env:GITHUB_SHA $Arch);architecture=$Arch;os='macOS synthetic metadata fixture';ble='macOS native ABI fixture';macos_backend_declared=$true;macos_native_abi_verified=$true}
 }
 try {
     foreach ($arch in @('X64','Arm64')) {
@@ -34,5 +34,7 @@ try {
     $null=Assert-MacOSConsumerProbe $path 'Arm64';$count++
     Reject { Assert-MacOSConsumerProbe $path 'Arm64' -RequireBackend }
     Reject { Assert-MacOSConsumerProbe (Join-Path $temp 'missing.json') 'X64' }
+    $p=Probe;$p.ci.attempt='999999';$p|ConvertTo-Json -Depth 6|Set-Content $path
+    Reject { Assert-MacOSConsumerProbe $path 'Arm64' -RequireBackend }
     Write-Output "PASS: $count Mac architecture/coverage contract checks; synthetic metadata only, not native execution proof."
 } finally { Remove-Item -LiteralPath $path -ErrorAction SilentlyContinue;Remove-Item -LiteralPath $temp }

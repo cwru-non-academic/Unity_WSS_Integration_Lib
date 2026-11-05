@@ -1,9 +1,14 @@
-function Assert-MacOSConsumerProbe([string]$Path,[string]$Architecture,[switch]$RequireBackend) {
+. "$PSScriptRoot/wss-ci/Evidence.ps1"
+function Assert-MacOSConsumerProbe([string]$Path,[string]$Architecture,[switch]$RequireBackend,[string]$Repository=$env:GITHUB_REPOSITORY,[string]$RunId=$env:GITHUB_RUN_ID,[string]$Attempt=$env:GITHUB_RUN_ATTEMPT,[string]$SourceSha=$env:GITHUB_SHA) {
     if (!(Test-Path -LiteralPath $Path)) { throw "Missing macOS $Architecture consumer evidence." }
     $p=Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    if ($p.schema -cne 'wss-dotnet-platform-probe/v1' -or $p.execution -cne 'dotnet' -or
-        $p.unity_executed -cne $false -or $p.hardware_access -cne $false -or $p.architecture -cne $Architecture -or
-        $p.os -notmatch 'Darwin|macOS') { throw "Invalid native macOS $Architecture consumer identity/coverage." }
+    # Old committed payload diagnostics may precede the identity contract.
+    # Every candidate backend proof must carry the current versioned identity.
+    if($RequireBackend -or $p.PSObject.Properties['ci']) {
+        Assert-WssCiEvidenceIdentity $p.ci $Repository $RunId $Attempt $SourceSha $Architecture
+    }
+    Assert-WssCiEvidenceFields $p @{schema='wss-dotnet-platform-probe/v1';execution='dotnet';unity_executed=$false;hardware_access=$false;architecture=$Architecture}
+    if ($p.os -notmatch 'Darwin|macOS') {throw "Invalid native macOS $Architecture OS identity."}
     $declared=$p.PSObject.Properties['macos_backend_declared']
     $abi=$p.PSObject.Properties['macos_native_abi_verified']
     if ($declared -and $declared.Value -ceq $true) {

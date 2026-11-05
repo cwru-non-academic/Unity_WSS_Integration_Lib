@@ -15,6 +15,9 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Require trusted dev event
         shell: pwsh
         run: |

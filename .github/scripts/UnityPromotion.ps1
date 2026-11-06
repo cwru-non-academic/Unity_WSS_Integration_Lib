@@ -9,8 +9,8 @@ function Assert-UnityProducer($Candidate) {
     Assert-UnityCandidate $Candidate
     $run=Wait-UnityRun $Candidate.repository $Candidate.run_id $Candidate.commit 'artifacts.yml' 'push'
     if ($run.run_attempt -lt 1) { throw 'Exact producer attempt is required.' }
-    if ($run.head_branch -cne 'dev' -or $run.head_repository.full_name -cne $Candidate.repository -or $Candidate.archive -cne 'WSS-Universal-ci.zip') { throw 'Automatic Unity propagation requires the canonical Core dev push archive.' }
-    $compare=Invoke-UnityGh -Arguments @('api',"repos/$($Candidate.repository)/compare/$($Candidate.commit)...dev") | ConvertFrom-Json
+    if ($run.head_branch -cne (Get-WssCiChannel) -or $run.head_repository.full_name -cne $Candidate.repository -or $Candidate.archive -cne 'WSS-Universal-ci.zip') { throw 'Automatic Unity propagation requires the canonical Core dev push archive.' }
+    $compare=Invoke-UnityGh -Arguments @('api',"repos/$($Candidate.repository)/compare/$($Candidate.commit)...$(Get-WssCiChannel)") | ConvertFrom-Json
     if ($compare.status -cnotin @('ahead','identical')) { throw 'Producer commit is not contained in Core dev.' }
     $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$($Candidate.repository)/actions/runs/$($Candidate.run_id)/attempts/$($run.run_attempt)/jobs?per_page=100") | ConvertFrom-Json
     $jobs=@($pages | ForEach-Object { $_.jobs })
@@ -18,9 +18,10 @@ function Assert-UnityProducer($Candidate) {
     Assert-WssCiProducerJobs $jobs 'macos-ble-v1'
     $artifact=Invoke-UnityGh -Arguments @('api',"repos/$($Candidate.repository)/actions/artifacts/$($Candidate.artifact_id)") | ConvertFrom-Json
     if ($artifact.expired -or $artifact.name -cne 'universal-release-assets' -or [string]$artifact.workflow_run.id -cne [string]$Candidate.run_id -or $artifact.workflow_run.head_sha -cne $Candidate.commit) { throw 'Wrong/expired producer artifact.' }
+    if((Get-WssCiChannel) -ceq 'main'){if($compare.status -cne 'identical'){throw 'Core main moved from exact candidate.'};$proof=Assert-WssCiWorkflowAuthorization ([string]$Candidate.run_id);Assert-UnitySameCandidate $proof.candidate $Candidate}
 }
 function Get-UnityHead([string]$Repository) {
-    $branch=Invoke-UnityGh -Arguments @('api',"repos/$Repository/branches/dev") | ConvertFrom-Json
+    $branch=Invoke-UnityGh -Arguments @('api',"repos/$Repository/branches/$(Get-WssCiChannel)") | ConvertFrom-Json
     Assert-UnitySha $branch.commit.sha
     $branch.commit.sha
 }
@@ -198,7 +199,7 @@ function Assert-UnityFanoutSources([string]$WrapperSha,[string]$GuiSha) {
     Assert-UnitySha $WrapperSha
     Assert-UnitySha $GuiSha
     foreach ($entry in @(@($UnityWrapperRepository,$WrapperSha),@($UnityGuiRepository,$GuiSha))) {
-        $head=Invoke-UnityGh -Arguments @('api',"repos/$($entry[0])/git/ref/heads/dev") | ConvertFrom-Json
+        $head=Invoke-UnityGh -Arguments @('api',"repos/$($entry[0])/git/ref/heads/$(Get-WssCiChannel)") | ConvertFrom-Json
         if ($head.object.sha -cne $entry[1]) { throw "Fanout source moved: $($entry[0]); require fresh reviewed evidence." }
     }
 }
@@ -228,7 +229,7 @@ function Assert-UnityGuiDispatchIntent([string]$WrapperSha,[switch]$RequireCurre
 function Send-UnityGuiDispatch([string]$RequestPath,[string]$ReadToken,[string]$WriteToken) {
     if (!$ReadToken -or !$WriteToken) { throw 'Separate read and scoped application-write tokens required.' }
     $request=Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json
-    if ($request.ref -cne 'dev') { throw 'GUI dispatch must target dev.' }
+    if ($request.ref -cne (Get-WssCiChannel)) { throw 'GUI dispatch must target dev.' }
     $approval=$request.inputs.approval_json | ConvertFrom-Json
     $original=$env:GH_TOKEN
     try {
@@ -236,6 +237,16 @@ function Send-UnityGuiDispatch([string]$RequestPath,[string]$ReadToken,[string]$
         Assert-UnityFanoutSources $request.inputs.wrapper_sha $approval.gui.source_sha
         if (Get-UnityGuiDispatchReuse $approval $request.inputs.wrapper_sha) { return }
         Assert-UnityGuiDispatchIntent $request.inputs.wrapper_sha -RequireCurrent
+        if((Get-WssCiChannel) -ceq 'main'){
+            $source=(& git -C $env:GITHUB_WORKSPACE rev-parse HEAD).Trim()
+            if($LASTEXITCODE -ne 0 -or $env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or
+               $env:GITHUB_REPOSITORY -cne $UnityWrapperRepository -or $env:GITHUB_REF -cne 'refs/heads/main' -or
+               $env:GITHUB_WORKFLOW_REF -cne "$UnityWrapperRepository/.github/workflows/dispatch-unity-promotion.yml@refs/heads/main" -or
+               $env:GITHUB_SHA -cne $request.inputs.wrapper_sha -or $env:GITHUB_WORKFLOW_SHA -cne $env:GITHUB_SHA -or $source -cne $env:GITHUB_SHA){throw 'Main fanout must execute the exact accepted integration workflow source.'}
+            $proof=Assert-WssCiWorkflowAuthorization ([string]$approval.candidate.run_id)
+            Assert-UnitySameCandidate $proof.candidate $approval.candidate
+            Assert-UnityFanoutSources $request.inputs.wrapper_sha $approval.gui.source_sha
+        }
         $env:GH_TOKEN=$WriteToken
         try { $null=Invoke-UnityGh -Arguments @('api','--method','POST',"repos/$UnityGuiRepository/actions/workflows/promote-integration.yml/dispatches",'--input',$RequestPath) }
         catch { throw 'GUI dispatch failed or uncertain; inspect remote state before any replay.' }
@@ -245,10 +256,10 @@ function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     Assert-UnitySha $Sha
     if ($PrNumber -cnotmatch '^[1-9][0-9]*$') { throw 'Invalid wrapper PR number.' }
     $pr=Invoke-UnityGh -Arguments @('api',"repos/$UnityWrapperRepository/pulls/$PrNumber") | ConvertFrom-Json
-    if (!$pr.merged -or $pr.merge_commit_sha -cne $Sha -or $pr.base.ref -cne 'dev' -or $pr.base.repo.full_name -cne $UnityWrapperRepository -or
+    if (!$pr.merged -or $pr.merge_commit_sha -cne $Sha -or $pr.base.ref -cne (Get-WssCiChannel) -or $pr.base.repo.full_name -cne $UnityWrapperRepository -or
         $pr.head.repo.full_name -cne $UnityWrapperRepository -or $pr.user.type -cne 'Bot') { throw 'Wrapper must be the actual reviewed same-repository bot PR merge into dev.' }
     if ($pr.head.ref -cne "automation/unity-wss-$($Approval.candidate.run_id)-$($Approval.candidate.sha256)") { throw 'Merged wrapper PR is not the canonical candidate branch.' }
-    $compare=Invoke-UnityGh -Arguments @('api',"repos/$UnityWrapperRepository/compare/${Sha}...dev") | ConvertFrom-Json
+    $compare=Invoke-UnityGh -Arguments @('api',"repos/$UnityWrapperRepository/compare/${Sha}...$(Get-WssCiChannel)") | ConvertFrom-Json
     if ($compare.status -cnotin @('ahead','identical')) { throw 'Wrapper merge is not contained in dev.' }
     $delta=Invoke-UnityGh -Arguments @('api',"repos/$UnityWrapperRepository/compare/$($Approval.wrapper.source_sha)...$Sha") | ConvertFrom-Json
     if ($delta.total_commits -lt 1 -or $delta.files.Count -ge 300) { throw 'Wrapper comparison empty or potentially truncated.' }

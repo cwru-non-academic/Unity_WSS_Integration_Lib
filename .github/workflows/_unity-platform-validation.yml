@@ -10,6 +10,10 @@ on:
       candidate_json: {type: string, required: true}
     secrets:
       WSS_GITHUB_APP_PRIVATE_KEY: {required: true}
+env:
+  WSS_CI_CHANNEL: ${{ github.ref_name }}
+  WSS_TARGET_ROOT: ${{ github.workspace }}/wrapper
+  WSS_CORE_TOOLS_ROOT: ${{ github.workspace }}/workflow-guard
 permissions:
   contents: read
 jobs:
@@ -54,6 +58,19 @@ jobs:
           repository: cwru-non-academic/CSharp_WSS_Integration_Lib
           ref: ${{ inputs.fixture_sha }}
           path: fixture
+          persist-credentials: false
+      - name: Read locked Core guard source
+        id: guard
+        shell: pwsh
+        run: |
+          $lock=Get-Content wrapper/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
+          "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/WSSCore
+          ref: ${{ steps.guard.outputs.commit }}
+          path: workflow-guard
           persist-credentials: false
       - name: Resolve the exact producer tuple independently on this host
         shell: pwsh
@@ -133,6 +150,19 @@ jobs:
           repository: cwru-non-academic/CSharp_WSS_Integration_Lib
           ref: ${{ inputs.fixture_sha }}
           path: fixture
+          persist-credentials: false
+      - name: Read locked Core guard source
+        id: guard
+        shell: pwsh
+        run: |
+          $lock=Get-Content wrapper/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
+          "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/WSSCore
+          ref: ${{ steps.guard.outputs.commit }}
+          path: workflow-guard
           persist-credentials: false
       - name: Resolve the exact producer tuple independently on this host
         shell: pwsh

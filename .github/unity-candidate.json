@@ -2,27 +2,27 @@
   "schema": "wss-unity-projection/v1",
   "candidate": {
     "archive": "WSS-Universal-ci.zip",
-    "artifact_id": "13524450471",
-    "commit": "50afc280a6c591bc0adec8dda5fe5ce72ba8708d",
+    "artifact_id": "13535512813",
+    "commit": "43445c18fe10f3c725e960b48e060ad3c92c6f67",
     "repository": "cwru-non-academic/WSSCore",
-    "run_id": "42258265327",
-    "sha256": "3a6d399c0f4c6c63228133e7d818e997c8c05d584924e4632cd5ccca96e257df"
+    "run_id": "42281962002",
+    "sha256": "97248e39c6dbcf8c75a27ef3ca1bfa592613bc46b6bc7818514c8421dc354abd"
   },
-  "projection_sha256": "c7e4ec9afe2e51a00420cf9ef195c5414bbc21aa064c60e51730b149af91b18c",
+  "projection_sha256": "1038b0ee48abc57da647d3da2c94ddbbfb409b5c7c12e9974fe66663a828645d",
   "files": [
     {
       "source": "WSS_Core_Interface.dll",
-      "sha256": "92545eaa872a3e3d1b4b453acd4ead98f06af6e2bc5f0a016943a5512eab806f",
+      "sha256": "f2f4668e19ff59614f018fe3a73ffc8e8acb267402061f7027edd1761c9f128d",
       "meta_sha256": "665b254552f0dcf42d5b7bb16f1043a4da5135e96b80a0944616685eb12e6534"
     },
     {
       "source": "WSS.Transport.Serial.dll",
-      "sha256": "a7a83de0a1ad7eb7b3281516a2b67321fb2741e4068ca734361067c2e1b1422d",
+      "sha256": "ccecf0b50ec53ff5fb6dac72b8227adaf4cebc8af7dd3e586c19addcdb798eca",
       "meta_sha256": "24d1cec0f5a028559d94bf5403246a926785c7f85331b999f2393d04ab815511"
     },
     {
       "source": "WSS.Transport.BLE.dll",
-      "sha256": "71315b1be932b4af8190b956450cef3799b62bd6c3a33a06059eafbd8fd4a7d6",
+      "sha256": "eed6e664c6dbabd39c32ae1465081293c89b226bc9652760582e3bf603c254bc",
       "meta_sha256": "d021756b47c6f607fce54bd662121c7a1348576c3c97a7136a98332317714569"
     },
     {
@@ -72,22 +72,22 @@
     },
     {
       "source": "backends/windows/WSS.Transport.BLE.Windows.dll",
-      "sha256": "ffaa696c5ebbfa85dcf7c23313a96fa492a070867897256530804ca526d82b6d",
+      "sha256": "49cb0de4bbd0b9bb2f688141bd13844a918e2e91415a9f44b693762a7d4356a2",
       "meta_sha256": "9af76394424eea19d1be2015b6f0fe4a51ce42c5b43b99b699710c49d231544b"
     },
     {
       "source": "backends/windows/WSS.Transport.BLE.Windows.Native.dll",
-      "sha256": "6f3b97b5da2e4de4e2aaa530d6ed2517e8406ba7a50bfcf39722f2aea0f08516",
+      "sha256": "f2231c3ae6ac23dda959cb168eb69b9fc8b4fd556af7ec60cdfbbeec1d455918",
       "meta_sha256": "0b32691c78db1ca3100139e23ba78b92319a2281c6d5721dba458487fa89ba24"
     },
     {
       "source": "backends/windows/WssBleWindows.dll",
-      "sha256": "78205c02507e110ef93928833c57d26855ea89edbfc70362235a7d3b9da726c8",
+      "sha256": "444b38bd805839446459d3df0b044d87408e508a9387ba9ca6c4335977c294f0",
       "meta_sha256": "ab6f026e60f2beda899d1578fbfdf09617d6d59e4c8254366463451af8dee6a9"
     },
     {
       "source": "backends/macos/WSS.Transport.BLE.MacOS.dll",
-      "sha256": "3e593d63ec86fd40a5cc4d5ec304f0ee53dd0ed41b519370c1a8a2ee8a0a5f14",
+      "sha256": "a8f6797f60b4fca28956926d0a313f98f7b184eceb6cbdb4933fbff213a69053",
       "meta_sha256": "b152cfeeb398ed3afa1457bd6b2513dba7c39bf7f365fdfcdb20ed5112ad2692"
     },
     {

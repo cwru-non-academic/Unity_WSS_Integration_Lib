@@ -92,3 +92,13 @@ Reject { Assert-WssReceiptChangedFiles unknown @(@{filename='lib/test'}) }
     }
 }
 "Receipt command dispatch contracts passed (no native-name collision; complete argument arrays; fail-closed exit codes)."
+
+# Main uses the same real receipt helpers; a dev PR is not main evidence.
+$savedChannel=$env:WSS_CI_CHANNEL
+try {
+    $env:WSS_CI_CHANNEL='main'
+    $mainPr=Pr;$mainPr.base.ref='main'
+    Assert-WssReceiptPr $mainPr $repo $sha
+    Reject {Assert-WssReceiptPr (Pr) $repo $sha}
+} finally {$env:WSS_CI_CHANNEL=$savedChannel}
+$global:LASTEXITCODE=0

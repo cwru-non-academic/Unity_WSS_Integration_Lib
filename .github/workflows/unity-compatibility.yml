@@ -12,6 +12,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   promotion-contracts:
+    env:
+      WSS_CI_CHANNEL: dev
     name: Promotion safety contracts (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:

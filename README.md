@@ -221,7 +221,6 @@ Successful candidate preflights additionally publish artifact `wss-candidate-pro
 | C# fixture commit `7145e2307f997f703748530bf74311ef94455e98` | Selects the unchanged canonical test source so language comparisons use the same cases. | Operational value in [.github/unity-ci.json](.github/unity-ci.json); repeated here for maintainers. |
 | Fixture SHA256 `f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2` | Checks the Git blob bytes independently of host checkout line endings. | Operational value in configuration and harness validation. |
 | Unity revision `96770f904ca7` | Distinguishes the exact Editor build used by the optional manual harness. | Operational value in execution configuration and prerequisite checks. |
-| Historical wrapper commit `ce6d9ef` | Previously cited as a preserved-history baseline alongside the archived `amp_control` tip; it is not a validation input in the current scripts. | Retained here pending the documentation-retention decision. |
 
 Candidate commit IDs, workflow source pins, archive/file/importer hashes, projection digests, plan IDs and receipt IDs bind evidence to exact code and artifact bytes. They belong in machine-readable configuration, workflow pins and generated evidence. A propagation plan is a generated artifact consumed by validation; it is not a repository planning document. These operational values must stay consistent when dependencies change.
 

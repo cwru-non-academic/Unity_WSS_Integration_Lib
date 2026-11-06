@@ -3,11 +3,15 @@ run-name: Promote universal WSS / wss-${{ fromJSON(inputs.candidate_json).run_id
 on:
   workflow_dispatch:
     inputs:
-      candidate_json: {description: Exact Core dev producer tuple, required: true, type: string}
+      candidate_json: {description: Exact Core producer tuple, required: true, type: string}
+env:
+  WSS_CI_CHANNEL: ${{ github.ref_name }}
+  WSS_TARGET_ROOT: ${{ github.workspace }}/source
+  WSS_CORE_TOOLS_ROOT: ${{ github.workspace }}/workflow-guard
 permissions:
   contents: read
 concurrency:
-  group: unity-promote-wrapper-dev
+  group: unity-promote-wrapper-${{ github.ref_name }}
   cancel-in-progress: false
 jobs:
   promote:
@@ -15,21 +19,36 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
-      - name: Require trusted dev event
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Require trusted target event
         shell: pwsh
         run: |
-          if ($env:GITHUB_REF -cne 'refs/heads/dev' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') { throw 'Only dev dispatch is accepted.' }
+          if ($env:GITHUB_REF -cnotin @('refs/heads/dev','refs/heads/main') -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') { throw 'Only registered target branch dispatch is accepted.' }
       - uses: actions/checkout@v4
         with:
           path: source
           fetch-depth: 0
-          lfs: true
+          persist-credentials: false
+      - name: Read locked Core guard source
+        id: guard
+        shell: pwsh
+        run: |
+          $lock=Get-Content source/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
+          "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/WSSCore
+          ref: ${{ steps.guard.outputs.commit }}
+          path: workflow-guard
           persist-credentials: false
       - name: Require candidate-promotion baseline approval
         shell: pwsh
         run: |
           $config = Get-Content source/.github/unity-ci.json -Raw | ConvertFrom-Json
-          if (!$config.baseline_ready) { throw 'Candidate-promotion baseline approval remains pending; ordinary .NET CI does not authorize promotion.' }
+          if (!$config.baseline_ready) { throw 'Candidate-promotion baseline approval remains pending; Unity via dotnet CI does not authorize promotion.' }
       - uses: actions/create-github-app-token@v2
         id: read
         with:

@@ -9,6 +9,10 @@ on:
       candidate_json: {type: string, default: ''}
     secrets:
       WSS_GITHUB_APP_PRIVATE_KEY: {required: false}
+env:
+  WSS_CI_CHANNEL: ${{ inputs.mode == 'candidate' && github.ref_name || 'dev' }}
+  WSS_TARGET_ROOT: ${{ github.workspace }}/wrapper
+  WSS_CORE_TOOLS_ROOT: ${{ github.workspace }}/workflow-guard
 permissions:
   contents: read
 jobs:
@@ -41,7 +45,7 @@ jobs:
           $gui = $env:GUI_SHA
           if ($env:MODE -ceq 'candidate') {
             if (!$config.baseline_ready) { throw 'Candidate promotion baseline approval remains pending; ordinary committed-state .NET CI is separate.' }
-            if ($env:GITHUB_REF -cne 'refs/heads/dev' -or $wrapper -cnotmatch '^[0-9a-f]{40}$' -or $gui -cnotmatch '^[0-9a-f]{40}$') { throw 'Candidate preflight requires exact dev source SHAs.' }
+            if ($env:GITHUB_REF -cnotin @('refs/heads/dev','refs/heads/main') -or $wrapper -cnotmatch '^[0-9a-f]{40}$' -or $gui -cnotmatch '^[0-9a-f]{40}$') { throw 'Candidate preflight requires exact dev source SHAs.' }
           } elseif ($env:ROLE -ceq 'gui') {
             $entry = git ls-tree HEAD -- Assets/SubModules/WSSInterfacingModule
             if ($LASTEXITCODE -ne 0 -or $entry -cnotmatch '^160000 commit ([0-9a-f]{40})\s+Assets/SubModules/WSSInterfacingModule$') { throw 'Exact wrapper gitlink is required.' }
@@ -107,6 +111,21 @@ jobs:
           ref: ${{ needs.prerequisites.outputs.fixture }}
           path: fixture
           token: ${{ github.token }}
+          persist-credentials: false
+      - name: Read locked Core guard source
+        if: inputs.mode == 'candidate'
+        id: guard
+        shell: pwsh
+        run: |
+          $lock=Get-Content wrapper/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
+          "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        if: inputs.mode == 'candidate'
+        with:
+          repository: cwru-non-academic/WSSCore
+          ref: ${{ steps.guard.outputs.commit }}
+          path: workflow-guard
           persist-credentials: false
       - name: Resolve exact producer candidate
         if: inputs.mode == 'candidate'

@@ -9,7 +9,7 @@ param(
     [switch]$ValidateOnly
 )
 . "$PSScriptRoot/UnityPromotion.ps1"
-if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_REF -cne 'refs/heads/dev') { throw 'Promotion preparation runs only in the trusted dev workflow.' }
+if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne (Get-WssCiChannelContext).ref) { throw 'Promotion preparation runs only in the trusted dev workflow.' }
 if (Test-Path -LiteralPath $WorkRoot) { throw 'WorkRoot must be new.' }
 New-Item -ItemType Directory -Path $WorkRoot | Out-Null
 $config=Read-UnityConfig (Join-Path $RepositoryRoot '.github/unity-ci.json')
@@ -17,6 +17,10 @@ if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { thr
 $source=(Invoke-UnityGit $RepositoryRoot @('rev-parse','HEAD')).Trim()
 Assert-UnitySource $RepositoryRoot $source -IgnoreSubmodule
 if ($source -cne $env:GITHUB_SHA) { throw 'Promotion checkout differs from trusted workflow source.' }
+if((Get-WssCiChannel) -ceq 'main'){
+    $workflow=if($Role -ceq 'wrapper'){'promote-wss.yml'}else{'promote-integration.yml'}
+    if($env:GITHUB_WORKFLOW_SHA -cne $source -or $env:GITHUB_WORKFLOW_REF -cne "$env:GITHUB_REPOSITORY/.github/workflows/$workflow@refs/heads/main"){throw 'Main preparation must execute its exact registered receiver workflow.'}
+}
 if ($Role -ceq 'wrapper') {
     if ($env:GITHUB_REPOSITORY -cne $UnityWrapperRepository -or !$CandidateJson -or $ApprovalJson) { throw 'Invalid wrapper promotion inputs/repository.' }
     $candidate=$CandidateJson | ConvertFrom-Json

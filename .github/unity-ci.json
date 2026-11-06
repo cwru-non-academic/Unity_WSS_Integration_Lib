@@ -35,5 +35,9 @@
     "normalized.1.2",
     "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
     "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+  ],
+  "channels": [
+    "dev",
+    "main"
   ]
 }

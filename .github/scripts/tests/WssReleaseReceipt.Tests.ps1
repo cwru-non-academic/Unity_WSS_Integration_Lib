@@ -42,3 +42,63 @@ Reject { Assert-WssReceiptChangedFiles unity-wrapper @(@{filename='.github/workf
 Reject { Assert-WssReceiptChangedFiles unity-gui @(@{filename='Assets/SubModules/WSSInterfacingModule'},@{filename='Program.cs'}) }
 Reject { Assert-WssReceiptChangedFiles unknown @(@{filename='lib/test'}) }
 "Receipt acceptance boundary tests passed ($count rejections; valid merged PR, exact normal CI and allowed dependency scopes)."
+
+# Exercise production command wrappers without network, credentials, or receipt emission.
+& {
+    $errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../Write-ReleaseReceipt.ps1'),[ref]$null,[ref]$errors)
+    if ($errors.Count) { throw 'Receipt emitter does not parse.' }
+    foreach ($name in @('Invoke-ReceiptGh','Invoke-ReceiptGit','Api')) {
+        $definitions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$true))
+        if ($definitions.Count -ne 1) { throw "Unique production command helper required: $name" }
+        . ([scriptblock]::Create($definitions[0].Extent.Text))
+    }
+    $collisions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in @('gh','git')},$true))
+    if ($collisions.Count) { throw 'Receipt helpers must not shadow native command names.' }
+    $calls=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -in @('Invoke-ReceiptGh','Invoke-ReceiptGit')},$true))
+    foreach ($call in $calls) {
+        if (!@($call.CommandElements | Where-Object { $_ -is [Management.Automation.Language.CommandParameterAst] -and $_.ParameterName -ceq 'Arguments' }).Count) {
+            throw 'Receipt command arrays must be bound explicitly, not splatted into positional parameters.'
+        }
+    }
+    $savedExitVariable=Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+    $hadExitCode=$null -ne $savedExitVariable
+    $savedExitCode=if ($hadExitCode) { $savedExitVariable.Value } else { $null }
+    try {
+        function gh { $global:LASTEXITCODE=0; @{arguments=@($args)} | ConvertTo-Json -Compress }
+        function git { $global:LASTEXITCODE=0; @{arguments=@($args)} | ConvertTo-Json -Compress }
+        $api=Api 'repos/example/repo'
+        if (($api.arguments -join '|') -cne 'api|repos/example/repo') { throw 'GitHub API arguments were lost.' }
+        $download=Invoke-ReceiptGh -Arguments @('run','download','123','--repo','example/repo','--dir','path with spaces') | ConvertFrom-Json
+        if (($download.arguments -join '|') -cne 'run|download|123|--repo|example/repo|--dir|path with spaces') { throw 'GitHub command arguments were changed.' }
+        $object=Invoke-ReceiptGit 'root with spaces' -Arguments @('rev-parse','HEAD:.github/scripts') | ConvertFrom-Json
+        if (($object.arguments -join '|') -cne '-C|root with spaces|rev-parse|HEAD:.github/scripts') { throw 'Git command arguments were changed.' }
+        function gh { $global:LASTEXITCODE=17 }
+        function git { $global:LASTEXITCODE=18 }
+        foreach ($failure in @(
+            @{action={Invoke-ReceiptGh -Arguments @('api','missing')};message='GitHub evidence request failed: api'},
+            @{action={Invoke-ReceiptGit '.' -Arguments @('rev-parse','missing')};message='Git evidence request failed.'}
+        )) {
+            $rejected=$false
+            try { & $failure.action } catch {
+                if ($_.Exception.Message -cne $failure.message) { throw }
+                $rejected=$true
+            }
+            if (!$rejected) { throw 'Native command failure was accepted.' }
+        }
+    } finally {
+        if ($hadExitCode) { $global:LASTEXITCODE=$savedExitCode }
+        else { Remove-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+    }
+}
+"Receipt command dispatch contracts passed (no native-name collision; complete argument arrays; fail-closed exit codes)."
+
+# Main uses the same real receipt helpers; a dev PR is not main evidence.
+$savedChannel=$env:WSS_CI_CHANNEL
+try {
+    $env:WSS_CI_CHANNEL='main'
+    $mainPr=Pr;$mainPr.base.ref='main'
+    Assert-WssReceiptPr $mainPr $repo $sha
+    Reject {Assert-WssReceiptPr (Pr) $repo $sha}
+} finally {$env:WSS_CI_CHANNEL=$savedChannel}
+$global:LASTEXITCODE=0

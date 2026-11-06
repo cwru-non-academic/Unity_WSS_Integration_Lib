@@ -45,7 +45,7 @@ $adapted=[IO.File]::ReadAllText((Join-Path $harness 'Assets/Tests/Editor/Stimula
 $canonical=[IO.File]::ReadAllText($fixturePath)
 $originalAssertions=@([regex]::Matches($canonical,'Assert\.That\(.*?;','Singleline').Value)
 $adaptedAssertions=@([regex]::Matches($adapted,'Assert\.That\(.*?;','Singleline').Value)
-if ($originalAssertions.Count -ne 18 -or ($originalAssertions -join "`n") -cne ($adaptedAssertions -join "`n")) { throw 'Canonical eighteen assertion expressions changed.' }
+if ($originalAssertions.Count -ne 20 -or ($originalAssertions -join "`n") -cne ($adaptedAssertions -join "`n")) { throw 'Canonical twenty assertion expressions changed.' }
 $xmlPath=Join-Path $OutputRoot 'results.xml'; $logPath=Join-Path $OutputRoot 'unity.log'
 $arguments=@('-batchmode','-nographics','-projectPath',('"'+$harness+'"'),'-runTests','-testPlatform','EditMode','-testResults',('"'+$xmlPath+'"'),'-logFile',('"'+$logPath+'"'))
 $process=Start-Process -FilePath $UnityExe -ArgumentList $arguments -WindowStyle Hidden -PassThru
@@ -60,11 +60,11 @@ $evidence=[ordered]@{
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     editor=$config.editor; revision=$config.revision; test_framework=$config.test_framework
     run_repository=$env:GITHUB_REPOSITORY; run_id=$env:GITHUB_RUN_ID; run_sha=$env:GITHUB_SHA
-    discovered=10; executed=10; passed=10; failed=0; skipped=0; assertions=18
+    discovered=12; executed=12; passed=12; failed=0; skipped=0; assertions=20
     projection_sha256=$projection.projection_sha256
     results_sha256=(Get-FileHash -LiteralPath $xmlPath).Hash.ToLowerInvariant()
     log_sha256=(Get-FileHash -LiteralPath $logPath).Hash.ToLowerInvariant()
 }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'evidence.json')
 $projection | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'projection.json')
-Write-Output 'PASS: actual Unity EditMode; ten canonical cases and eighteen unchanged assertion expressions.'
+Write-Output 'PASS: actual Unity EditMode; twelve canonical cases and twenty unchanged assertion expressions.'

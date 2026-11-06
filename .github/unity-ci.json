@@ -8,8 +8,8 @@
   "revision": "96770f904ca7",
   "test_framework": "1.1.33",
   "fixture_repository": "cwru-non-academic/CSharp_WSS_Integration_Lib",
-  "fixture_commit": "7145e2307f997f703748530bf74311ef94455e98",
-  "fixture_sha256": "f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2",
+  "fixture_commit": "6702dee21e5750d463ccec8c8b5fbd38f6bd33e4",
+  "fixture_sha256": "16df8957476d4ae4620a9e5c54a0fe8ccd3c263364157efcddd949b5ff1e9301",
   "expected_cases": [
     "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
     "InitializationThroughCSharpImplementationPassesCoreConformance",
@@ -20,7 +20,9 @@
     "NormalizedScenario(\"normalized.1.0\")",
     "NormalizedScenario(\"normalized.1.2\")",
     "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
-    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming",
+    "analog.multichannel-isolation",
+    "normalized.multichannel-isolation"
   ],
   "automated_execution": "dotnet",
   "dotnet_sdk": "9.0.316",
@@ -34,10 +36,16 @@
     "normalized.1.0",
     "normalized.1.2",
     "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
-    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming",
+    "analog.multichannel-isolation",
+    "normalized.multichannel-isolation"
   ],
   "channels": [
     "dev",
     "main"
+  ],
+  "multidevice_expected_cases": [
+    "analog.multidevice-isolation",
+    "normalized.multidevice-isolation"
   ]
 }

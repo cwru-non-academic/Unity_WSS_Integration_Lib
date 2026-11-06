@@ -23,10 +23,10 @@ $results=@(Get-ChildItem -LiteralPath (Join-Path $OutputRoot 'nunit') -Filter '*
 if ($results.Count -ne 1) { throw 'Expected exact NUnit regression result.' }
 [xml]$xml=Get-Content -LiteralPath $results[0].FullName -Raw
 $cases=@($xml.SelectNodes('//test-case'))
-if ($cases.Count -ne 13 -or @($cases | Where-Object { $_.GetAttribute('result') -cne 'Passed' }).Count) { throw 'All ten canonical and three lifetime regression cases must pass.' }
+if ($cases.Count -ne 15 -or @($cases | Where-Object { $_.GetAttribute('result') -cne 'Passed' }).Count) { throw 'All twelve canonical and three lifetime regression cases must pass.' }
 $canonical=@($cases | Where-Object { $_.GetAttribute('name') -cin $config.dotnet_expected_cases })
 if ($canonical.Count -ne 10 -or @(Compare-Object $config.dotnet_expected_cases @($canonical | ForEach-Object { $_.GetAttribute('name') }) -CaseSensitive).Count) { throw 'Missing canonical BLE lifecycle scenario.' }
 $inputs=Get-Content -LiteralPath (Join-Path $harness 'conformance-inputs.json') -Raw | ConvertFrom-Json
-if ($inputs.assertion_expressions -ne 18) { throw 'Canonical assertions changed.' }
-@{schema='wss-ble-lifecycle-regression/v1';role=$Role;execution='dotnet-fake-transport';canonical_cases=10;assertion_expressions=18;lifecycle_cases=3;unity_executed=$false;native_ble_executed=$false;hardware_access=$false} | ConvertTo-Json | Set-Content (Join-Path $OutputRoot 'regression.json')
+if ($inputs.assertion_expressions -ne 20) { throw 'Canonical assertions changed.' }
+@{schema='wss-ble-lifecycle-regression/v1';role=$Role;execution='dotnet-fake-transport';canonical_cases=12;assertion_expressions=20;lifecycle_cases=3;unity_executed=$false;native_ble_executed=$false;hardware_access=$false} | ConvertTo-Json | Set-Content (Join-Path $OutputRoot 'regression.json')
 Write-Output 'PASS: ten unchanged canonical cases through the BLE lifetime adapter, plus three cancellation/bytes/disposal cases; fake transport only.'

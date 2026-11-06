@@ -74,11 +74,11 @@ $evidence=[ordered]@{
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     sdk=$sdk; target_framework='net9.0'; test_framework='NUnit 3.14.0'; unity_executed=$false
     run_repository=$env:GITHUB_REPOSITORY; run_id=$env:GITHUB_RUN_ID; run_sha=$env:GITHUB_SHA
-    discovered=12; executed=12; passed=12; failed=0; skipped=0; assertion_expressions=20; stage=$Stage
+    discovered=16; executed=16; passed=16; failed=0; skipped=0; assertion_expressions=20; stage=$Stage
     projection_sha256=$projection.projection_sha256
     results_sha256=(Get-FileHash -LiteralPath $xmlPath).Hash.ToLowerInvariant()
     log_sha256=(Get-FileHash -LiteralPath $logPath).Hash.ToLowerInvariant()
 }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'evidence.json')
 $projection | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'projection.json')
-Write-Output 'PASS: ordinary .NET through shared production commands; twelve canonical cases, twenty unchanged assertion expressions; Unity was not executed.'
+Write-Output 'PASS: ordinary .NET through shared production commands; sixteen canonical cases, twenty unchanged assertion expressions; Unity was not executed.'

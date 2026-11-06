@@ -60,11 +60,11 @@ $evidence=[ordered]@{
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     editor=$config.editor; revision=$config.revision; test_framework=$config.test_framework
     run_repository=$env:GITHUB_REPOSITORY; run_id=$env:GITHUB_RUN_ID; run_sha=$env:GITHUB_SHA
-    discovered=12; executed=12; passed=12; failed=0; skipped=0; assertions=20
+    discovered=16; executed=16; passed=16; failed=0; skipped=0; assertions=20
     projection_sha256=$projection.projection_sha256
     results_sha256=(Get-FileHash -LiteralPath $xmlPath).Hash.ToLowerInvariant()
     log_sha256=(Get-FileHash -LiteralPath $logPath).Hash.ToLowerInvariant()
 }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'evidence.json')
 $projection | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'projection.json')
-Write-Output 'PASS: actual Unity EditMode; twelve canonical cases and twenty unchanged assertion expressions.'
+Write-Output 'PASS: actual Unity EditMode; sixteen canonical cases and twenty unchanged assertion expressions.'

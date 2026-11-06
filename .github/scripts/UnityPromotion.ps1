@@ -110,7 +110,7 @@ function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$Ru
         [string]$e.run_id -cne $RunId -or $e.run_sha -cne $SourceSha -or $expectedRunSha -cne $SourceSha -or
         $e.fixture_sha -cne $Config.fixture_commit -or $e.fixture_sha256 -cne $Config.fixture_sha256 -or
         $e.sdk -cne $Config.dotnet_sdk -or $e.target_framework -cne 'net9.0' -or $e.test_framework -cne 'NUnit 3.14.0' -or
-        $e.discovered -ne 12 -or $e.executed -ne 12 -or $e.passed -ne 12 -or $e.failed -ne 0 -or $e.skipped -ne 0 -or $e.assertion_expressions -ne 20) { throw 'Invalid runtime/source/fixture evidence.' }
+        $e.discovered -ne 16 -or $e.executed -ne 16 -or $e.passed -ne 16 -or $e.failed -ne 0 -or $e.skipped -ne 0 -or $e.assertion_expressions -ne 20) { throw 'Invalid runtime/source/fixture evidence.' }
     foreach ($pair in @(@('results.xml','results_sha256'),@('dotnet.log','log_sha256'))) {
         if ((Get-FileHash -LiteralPath (Join-Path $Root $pair[0])).Hash.ToLowerInvariant() -cne $e.($pair[1])) { throw 'Evidence content hash mismatch.' }
     }

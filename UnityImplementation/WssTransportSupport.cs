@@ -45,6 +45,9 @@ internal static class WssTransportSupport
 
     internal static ITransport Create(WssTransportType type, bool auto, string device)
     {
+#if WSS_HOST_LIFECYCLE_TESTS
+        if (TestFactory != null) return TestFactory(type, auto, device);
+#endif
         switch (type)
         {
             case WssTransportType.Conformance:
@@ -85,6 +88,9 @@ internal static class WssTransportSupport
                 throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown WSS transport type.");
         }
     }
+#if WSS_HOST_LIFECYCLE_TESTS
+    internal static Func<WssTransportType, bool, string, ITransport> TestFactory;
+#endif
 
     internal static SerialPortTransportOptions SerialOptions(bool auto, string device)
     {
@@ -201,10 +207,12 @@ internal sealed class WssBleTransport : ITransport
         lock (_gate)
         {
             if (_disposed) return;
+            // A failed underlying disposal is not completion. Retain the
+            // canceled activation so an explicit cleanup retry can finish it.
+            _inner.Dispose();
+            _activation.Dispose();
             _disposed = true;
         }
-        try { _inner.Dispose(); }
-        finally { _activation.Dispose(); }
     }
 }
 
@@ -213,10 +221,23 @@ internal sealed class WssBleTransport : ITransport
 internal sealed class WssBleCleanup
 {
     internal Task Pending { get; private set; } = Task.CompletedTask;
+    private IStimulationCore failedOwner;
+    private WssBleTransport failedTransport;
+    private SynchronizationContext failedContext;
+    private string failedDescription;
+
+    internal void Retry()
+    {
+        if ((Pending.IsFaulted || Pending.IsCanceled) && failedTransport != null)
+            Release(failedOwner, failedTransport, failedContext, failedDescription);
+    }
 
     internal void Release(IStimulationCore owner, WssBleTransport transport,
         SynchronizationContext context, string description)
     {
+        if (!Pending.IsCompleted) throw new InvalidOperationException("BLE cleanup is already pending.");
+        failedOwner = owner; failedTransport = transport;
+        failedContext = context; failedDescription = description;
         transport.CancelConnection();
         Pending = Task.Run(async () =>
         {
@@ -231,19 +252,27 @@ internal sealed class WssBleCleanup
             {
                 if (owner != null) owner.Dispose();
                 else transport.Dispose(); // Construction never transferred ownership.
+                failedOwner = null; failedTransport = null;
+                failedContext = null; failedDescription = null;
             }
             catch (Exception ex)
             {
                 Report(context, description + " cleanup failed: " + ex);
+                Exception failure = ex;
                 if (owner != null)
                 {
                     try { transport.Dispose(); } // Shutdown threw before transport disposal.
-                    catch (Exception cleanupEx) { Report(context, description + " transport disposal failed: " + cleanupEx); }
+                    catch (Exception cleanupEx)
+                    {
+                        Report(context, description + " transport disposal failed: " + cleanupEx);
+                        failure = new AggregateException(ex, cleanupEx);
+                    }
                 }
+                throw new InvalidOperationException(description + " cleanup did not complete successfully.", failure);
             }
         });
     }
 
     private static void Report(SynchronizationContext context, string message) =>
-        context.Post(_ => Debug.LogError(message), null);
+        (context ?? new SynchronizationContext()).Post(_ => Debug.LogError(message), null);
 }

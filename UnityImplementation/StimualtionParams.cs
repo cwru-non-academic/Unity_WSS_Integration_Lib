@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Serialization;
 using System.Threading;
 using System.Collections.Generic;
@@ -60,6 +60,13 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     private readonly WssBleCleanup _bleCleanup = new WssBleCleanup();
     private SynchronizationContext _bleLogContext;
     private bool _initializeAfterCleanup;
+    private readonly WssReloadState _reload = new WssReloadState();
+    private bool _constructing;
+    private bool _externallyDisabled;
+    private bool _explicitActivation;
+    private bool InitializationAllowed => !_destroyed && !_externallyDisabled && (isActiveAndEnabled || _explicitActivation);
+    /// <summary>Gets the last reload/cleanup error, or an empty string.</summary>
+    public string LastReloadError => _reload.Error?.ToString() ?? string.Empty;
     private IBasicStimulation basicWSS;
     /// <summary>True after <see cref="StartStimulation"/> succeeds.</summary>
     public bool started = false;
@@ -78,7 +85,7 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     /// <summary>
     /// Initializes the WSS device connection when the component becomes active.
     /// </summary>
-    void OnEnable() => InitializeStack();
+    void OnEnable() { _externallyDisabled = false; _explicitActivation = false; _reload.Enable(); InitializeStack(); }
 
     /// <summary>
     /// Performs periodic updates and tick cycles for communication and task execution.
@@ -86,6 +93,12 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     /// </summary>
     void Update()
     {
+        if (Input.GetKeyDown(KeyCode.A))
+        {
+            try { resetRadio(); }
+            catch (Exception ex) { _reload.Fail(_reload.Generation, ex); Debug.LogError("WSS reload failed: " + ex, this); }
+            return;
+        }
         if (_initializeAfterCleanup && _bleCleanup.Pending.IsCompleted)
         {
             _initializeAfterCleanup = false;
@@ -103,8 +116,7 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
         try
         {
             WSS.Tick();
-            if (Input.GetKeyDown(KeyCode.A))
-                WSS.LoadConfigFile();
+
         }
         catch (Exception ex)
         {
@@ -116,7 +128,7 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     /// <summary>
     /// Ensures proper device shutdown when the component is disabled.
     /// </summary>
-    void OnDisable() => ShutdownStack();
+    void OnDisable() { _externallyDisabled = true; _explicitActivation = false; _reload.Disable(); ShutdownStack(); }
 
     void OnDestroy()
     {
@@ -137,60 +149,141 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
 
     private void InitializeStack()
     {
-        if (_destroyed) return;
+        if (!InitializationAllowed) return;
+        if (_constructing) { _initializeAfterCleanup = true; return; }
         MigrateTransport();
-        if (!_bleCleanup.Pending.IsCompleted)
+        if (_reload.CleanupError != null)
         {
-            _initializeAfterCleanup = true;
+            _initializeAfterCleanup = false;
+            _reload.Fail(_reload.Generation, _reload.CleanupError);
             return;
         }
+        if (!_bleCleanup.Pending.IsCompleted) { _initializeAfterCleanup = true; return; }
+        long generation = _reload.Generation;
+        if (_bleCleanup.Pending.IsFaulted || _bleCleanup.Pending.IsCanceled)
+        {
+            _initializeAfterCleanup = false;
+            _reload.Fail(generation, (Exception)_bleCleanup.Pending.Exception ?? new InvalidOperationException("BLE cleanup was canceled."));
+            return;
+        }
+        IStimulationCore owner = null;
+        ITransport transport = null;
         try
         {
-            if (!StackSettingsMatch())
+            if (_reload.Pending == null)
             {
-                DisposeStack();
-                if (!_bleCleanup.Pending.IsCompleted)
-                {
-                    _initializeAfterCleanup = true;
-                    return;
-                }
-                if (transportType == WssTransportType.BLE)
-                    _bleLogContext = WssTransportSupport.CaptureLogContext();
-                _transport = WssTransportSupport.Create(transportType, auto, deviceName);
-
-                // Retain Core until the params layer is fully constructed, including its configuration.
-                _stackOwner = new WssStimulationCore(_transport, new WssStimulationCoreOptions
-                {
-                    ConfigPath = Application.streamingAssetsPath,
-                    MaxSetupTries = maxSetupTries
-                });
-                _stackOwner = new StimParamsLayer(_stackOwner, Application.streamingAssetsPath);
-                _wss = (IStimParamsCore)_stackOwner;
-                _wss.TryGetBasic(out basicWSS);
-                basicSupported = basicWSS != null;
-                _stackTransportType = transportType;
-                _stackAuto = auto;
-                _stackPort = deviceName;
-                _stackConfigPath = Application.streamingAssetsPath;
-                _stackMaxSetupTries = maxSetupTries;
+                if (_initialized) return;
+                generation = _reload.Request(_reload.Current(_wss, Application.streamingAssetsPath).ReloadCore());
             }
-
-            if (_initialized) return;
-            _wss.Initialize();
+            if (_wss != null)
+            {
+                // A new generation must be installed even when the path and selector match.
+                DisposeStack(true);
+                if (!_bleCleanup.Pending.IsCompleted) { _initializeAfterCleanup = true; return; }
+                if (_bleCleanup.Pending.IsFaulted || _bleCleanup.Pending.IsCanceled)
+                    throw new InvalidOperationException("BLE cleanup failed.", _bleCleanup.Pending.Exception);
+            }
+            var snapshot = _reload.Pending;
+            if (!_reload.IsCurrent(generation) || !InitializationAllowed) return;
+            _constructing = true;
+            if (transportType == WssTransportType.BLE)
+                _bleLogContext = WssTransportSupport.CaptureLogContext();
+            transport = WssTransportSupport.Create(transportType, auto, deviceName);
+            if (!_reload.IsCurrent(generation) || !InitializationAllowed)
+            {
+                var abandoned = transport; transport = null;
+                ReleaseUnpublished(null, abandoned); return;
+            }
+            owner = snapshot.BuildAndInitialize(transport, new WssStimulationCoreOptions
+            {
+                ConfigPath = snapshot.CorePath,
+                MaxSetupTries = maxSetupTries
+            }, WssConfigurationLayer.Calibration);
+            if (!_reload.IsCurrent(generation) || !InitializationAllowed)
+            {
+                var abandonedOwner = owner; var abandonedTransport = transport;
+                owner = null; transport = null;
+                ReleaseUnpublished(abandonedOwner, abandonedTransport); return;
+            }
+            _stackOwner = owner;
+            _wss = (IStimParamsCore)owner;
+            _transport = transport;
+            _wss.TryGetBasic(out basicWSS); basicSupported = basicWSS != null;
+            _stackTransportType = transportType;
+            _stackAuto = auto;
+            _stackPort = deviceName;
+            _stackConfigPath = Application.streamingAssetsPath;
+            _stackMaxSetupTries = maxSetupTries;
+            _reload.Publish(generation);
             _initialized = true;
+            _initializeAfterCleanup = false;
+            started = false;
+            owner = null; transport = null;
         }
         catch (Exception ex)
         {
+            _initialized = false;
+            _initializeAfterCleanup = false;
+            _reload.Fail(generation, ex);
             Debug.LogError($"WSS {transportType} ({deviceName}) initialization failed: {ex}", this);
-            DisposeStack();
+            if (owner != null || transport != null)
+            {
+                try { ReleaseUnpublished(owner, transport); }
+                catch (Exception cleanup) { _reload.Fail(generation, new AggregateException(ex, cleanup)); }
+            }
+        }
+        finally
+        {
+            _constructing = false;
+            if (generation != _reload.Generation && _reload.Pending != null && InitializationAllowed)
+                _initializeAfterCleanup = true;
         }
     }
 
-    private void ShutdownStack()
+    private void ReleaseUnpublished(IStimulationCore owner, ITransport transport)
     {
+        if (transport is WssBleTransport ble)
+            _bleCleanup.Release(owner, ble, _bleLogContext, "WSS unpublished BLE activation");
+        else _reload.DisposeDetached(owner, transport);
+    }
+
+    private void ResetWithConfiguration(WssConfigurationSnapshot snapshot)
+    {
+        if (_destroyed || _externallyDisabled) return;
+        _explicitActivation = !isActiveAndEnabled;
+        _reload.Enable();
+        _reload.Request(snapshot);
+        _reload.RetryCleanup();
+        _bleCleanup.Retry();
+        ShutdownStack(true);
+        InitializeStack();
+    }
+
+    private void ReloadParameters(string path)
+    {
+        var current = _reload.Current(_wss, Application.streamingAssetsPath);
+        var snapshot = path == null ? current.ReloadDefaults() : current.Reload(path);
+        if (_wss != null && _initialized && snapshot.HasSameCore(current))
+        {
+            long generation = _reload.Request(snapshot);
+            snapshot.ApplyWithoutRestart(_wss);
+            _reload.Publish(generation);
+        }
+        else ResetWithConfiguration(snapshot);
+    }
+
+    /// <summary>Retries the last validated reload without rereading its files.</summary>
+    public void RetryReload()
+    {
+        if (_reload.Pending == null) throw new InvalidOperationException("No validated reload is pending.");
+        ResetWithConfiguration(_reload.Pending);
+    }
+    private void ShutdownStack(bool internalReset = false)
+    {
+        if (!internalReset) _reload.Cancel();
         _initializeAfterCleanup = false;
         _initialized = false;
-        if (_transport is WssBleTransport) { DisposeStack(); return; }
+        if (_transport is WssBleTransport) { DisposeStack(internalReset); return; }
         if (_wss == null) return;
         try { _wss.Shutdown(); }
         catch (Exception ex)
@@ -200,8 +293,9 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
         }
     }
 
-    private void DisposeStack()
+    private void DisposeStack(bool internalReset = false)
     {
+        if (!internalReset) _reload.Cancel();
         _initializeAfterCleanup = false;
         var owner = _stackOwner;
         var transport = _transport;
@@ -218,18 +312,12 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
         }
         try
         {
-            if (owner != null) owner.Dispose();
-            else transport?.Dispose(); // Core construction did not complete; ownership never transferred.
+            _reload.DisposeDetached(owner, transport);
         }
         catch (Exception ex)
         {
             Debug.LogError($"WSS disposal failed: {ex}", this);
-            // Core.Dispose can throw from Shutdown before reaching transport disposal.
-            if (owner != null)
-            {
-                try { transport?.Dispose(); }
-                catch (Exception cleanupEx) { Debug.LogError($"WSS transport disposal failed: {cleanupEx}", this); }
-            }
+            if (internalReset) throw;
         }
     }
 
@@ -247,8 +335,7 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     /// </summary>
     public void resetRadio()
     {
-        ShutdownStack();
-        InitializeStack();
+        ResetWithConfiguration(_reload.Current(_wss, Application.streamingAssetsPath).ReloadCore());
     }
 
     #endregion
@@ -525,12 +612,16 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
 
     /// <summary>Loads params JSON from default location.</summary>
     /// <inheritdoc cref="IStimParamsCore.LoadParamsJson()"/>
-    public void LoadParamsJson() => WSS.LoadParamsJson();
+    public void LoadParamsJson() => ReloadParameters(null);
 
     /// <summary>Loads params JSON from a given file or directory.</summary>
     /// <param name="pathOrDir">File path or directory with default name.</param>
     /// <inheritdoc cref="IStimParamsCore.LoadParamsJson(string)"/>
-    public void LoadParamsJson(string pathOrDir) => WSS.LoadParamsJson(pathOrDir);
+    public void LoadParamsJson(string pathOrDir)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrDir)) throw new ArgumentException("Invalid configuration path.", nameof(pathOrDir));
+        ReloadParameters(pathOrDir);
+    }
 
     /// <summary>
     /// Sets a parameter by dotted key. Examples: "stim.ch.0.amp", "stim.ch.1.minPW".
@@ -567,7 +658,7 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
         string baseKey = $"stim.ch.{ch}";
         WSS.AddOrUpdateStimParam($"{baseKey}.maxPW", max);
         WSS.AddOrUpdateStimParam($"{baseKey}.minPW", min);
-        WSS.AddOrUpdateStimParam($"{baseKey}.amp", amp);
+        WSS.AddOrUpdateStimParam($"{baseKey}.defaultPA", amp);
     }
 
     #endregion

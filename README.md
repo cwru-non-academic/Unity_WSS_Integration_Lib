@@ -3,6 +3,62 @@ C# class that has all the methods to communicate with the WSS and software speci
 
 All documentation about the API and other implementations can be found in [GitHub Pages](https://cwru-non-academic.github.io/WSS_Documentation/).
 
+## Configuration reload
+
+This source requires Core's `WssConfigurationSnapshot` API. This candidate
+couples the runtime source with the authenticated modern Core distribution.
+Applications must adopt this wrapper and payload together.
+
+Press **A**, call `resetRadio()`, or call `Stimulation.LoadCoreConfigFile()` to
+stage edited contents of the active `stimConfig.json` and use the existing host
+reset path. Calibration/model values remain as currently applied. The three
+components (`Stimulation`, `StimulationParams`, `Stimulationbasic`) use the same
+enable/disable and deferred BLE cleanup behavior. A reset installs a new
+configuration generation even when its file path has not changed.
+
+For model/calibration hosts, `LoadParamsJson()` reloads **all three JSON files**
+from their original startup/default paths. It returns to those defaults after
+an earlier override; it does not reload the last selected profile implicitly.
+`LoadParamsJson(directory)` selects all three standard filenames there.
+**`LoadParamsJson(explicitParameterFile)` uses that parameter file and the
+startup-default Core and model files. It does not use sibling Core/model files.**
+Startup paths are anchored once, so later working-directory changes do not
+change defaults.
+
+Staging is read-only. Reconstruction installs the exact validated snapshots,
+even if files change during cleanup. Any Core value change uses the host reset;
+unchanged Core allows atomic model/calibration publication without reconnecting.
+BLE reset may complete on a later `Update()` after old cleanup finishes. Returning
+from the request is not a claim that the replacement has reached operational state.
+
+Validation errors leave the running configuration unchanged. Cleanup or
+construction failure leaves the host not initialized, reports `LastReloadError`,
+and does not replay old stimulation. `RetryReload()` retries a retained validated
+request without rereading its files; a new reload request stages new contents.
+External disable, shutdown or destruction cancels pending reconstruction. A later
+enable starts a fresh request; obsolete requests cannot publish a replacement.
+
+## Local lifecycle tests
+
+`Tests~/HostLifecycle` links the production component lifecycle methods, reset
+path, transport adapter and cleanup code. It substitutes engine services and
+uses Core's emulator for all transport I/O. These are ordinary .NET tests:
+**they do not establish Unity Editor/Play execution, native BLE execution, or
+universal-package acceptance**. The `~` folder keeps shims out of Unity imports.
+
+Use the same test project/command for all three component types; do not copy
+their behavior matrix into separate CI jobs. Supply explicit Core and transport
+inputs, for example:
+
+```powershell
+dotnet test 'Tests~/HostLifecycle/Wss.Unity.HostLifecycle.Tests.csproj' -c Release `
+  -p:WSS_CORE_PROJECT='<Core checkout>/WSS_Core_Interface.csproj' `
+  -p:WSS_TRANSPORT_ARTIFACT_DIR='<transport distribution>'
+```
+
+For binary-input testing, supply `WSS_ARTIFACT_DIR` instead of `WSS_CORE_PROJECT`.
+Release/provenance checks remain separate from this source lifecycle suite.
+
 ## Unity Requirements
 Change NET framework 2.1 to NET Framework within Project settings > player > other settings > config.
 

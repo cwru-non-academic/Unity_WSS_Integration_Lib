@@ -20,6 +20,8 @@ public partial class Stimulation : IDisposable
     private bool basicSupported;
     private bool _initialized;
     private bool _disposed;
+    private WssConfigurationSnapshot _snapshot;
+    private WssConfigurationSnapshot _pendingSnapshot;
     private IModelParamsCore WSS => _wss ?? throw new InvalidOperationException("The WSS stack is not initialized.");
 
     /// <summary>Creates an emulator-only host for the shared production wrapper source.</summary>
@@ -47,13 +49,20 @@ public partial class Stimulation : IDisposable
 #endif
         try
         {
-            _wss = WssStimulationStack.Build(_transport, _directory, 1, ref _owner);
+            var snapshot = _pendingSnapshot ?? _snapshot ?? WssConfigurationSnapshot.ReadDefaults(_directory);
+            _owner = snapshot.BuildAndInitialize(_transport, new WssStimulationCoreOptions
+            {
+                ConfigPath = snapshot.CorePath,
+                MaxSetupTries = 1
+            }, WssConfigurationLayer.Model);
+            _wss = (IModelParamsCore)_owner;
             _wss.TryGetBasic(out basicWSS);
             basicSupported = basicWSS != null;
-            _wss.Initialize();
+            _snapshot = snapshot;
+            _pendingSnapshot = null;
             _initialized = true;
         }
-        catch { Dispose(); throw; }
+        catch { ShutdownStack(); throw; }
     }
 
     /// <summary>Advances the emulator on the calling thread.</summary>
@@ -75,16 +84,46 @@ public partial class Stimulation : IDisposable
     public void TickConformance() => Tick();
 
     /// <summary>Initializes the in-memory stack through the application entry point.</summary>
-    public void resetRadio() => Initialize();
+    public void resetRadio()
+    {
+        var current = _snapshot ?? WssConfigurationSnapshot.ReadDefaults(_directory);
+        if (_wss != null) current = current.CaptureCurrent(_wss);
+        ResetWithSnapshot(current.ReloadCore());
+    }
+
+    private void ReloadParameters(string path)
+    {
+        var current = _snapshot ?? WssConfigurationSnapshot.ReadDefaults(_directory);
+        if (_wss != null) current = current.CaptureCurrent(_wss);
+        var snapshot = path == null ? current.ReloadDefaults() : current.Reload(path);
+        if (_wss != null && snapshot.HasSameCore(current))
+        {
+            snapshot.ApplyWithoutRestart(_wss);
+            _snapshot = snapshot;
+        }
+        else ResetWithSnapshot(snapshot);
+    }
+
+    private void ResetWithSnapshot(WssConfigurationSnapshot snapshot)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(Stimulation));
+        _pendingSnapshot = snapshot;
+        ShutdownStack();
+        Initialize();
+    }
+
+    private void ShutdownStack()
+    {
+        _initialized = false;
+        try { if (_owner != null) _owner.Dispose(); else _transport?.Dispose(); }
+        finally { _wss = null; _owner = null; _transport = null; basicWSS = null; basicSupported = false; }
+    }
 
     /// <summary>Disposes the stack after its tick loop has stopped.</summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _initialized = false;
-        try { if (_owner != null) _owner.Dispose(); else _transport?.Dispose(); }
-        catch { _transport?.Dispose(); throw; }
-        finally { _wss = null; _owner = null; _transport = null; basicWSS = null; basicSupported = false; }
+        ShutdownStack();
     }
 }

@@ -83,3 +83,12 @@ function Resolve-UnityExecutionProfile([string]$WrapperRoot,[string]$Mode,[strin
  # Existing resolver/projection, source and receipt gates remain mandatory.
  Resolve-WssReviewedProfile $payload $producer -SelectionEnabledCampaign:($Selected -or $Mode -ceq 'candidate')
 }
+
+function Read-UnityExecutionConfig([string]$ConfigPath,[string]$WrapperRoot,[ValidateSet('committed','candidate')][string]$Mode='committed') {
+ # Candidate prerequisites choose modern before download; actual candidate bytes
+ # are independently classified and enforced by the runner after resolution.
+ $profile=if($Mode -ceq 'candidate'){'layered-v1'}else{(Resolve-UnityExecutionProfile $WrapperRoot 'committed' '' '').profile}
+ $config=Read-UnityConfig $ConfigPath $profile
+ Assert-UnityProfileContract ([pscustomobject]@{profile=$profile}) $config
+ $config
+}

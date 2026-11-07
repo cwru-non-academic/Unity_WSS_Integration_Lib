@@ -21,9 +21,9 @@ function Assert-UnityTestSource($Tests) {
         }
     }
 }
-function Resolve-UnityTestSource([string]$WrapperRoot,[string]$WrapperSha,[string]$ConfigPath,[string]$Role='wrapper',[string]$GuiRoot='',[string]$GuiSha='',[string]$TestRoot='',[string]$TestSha='',[string]$TestRepository='',[string]$TestSelectionId='') {
+function Resolve-UnityTestSource([string]$WrapperRoot,[string]$WrapperSha,[string]$ConfigPath,[string]$Role='wrapper',[string]$GuiRoot='',[string]$GuiSha='',[string]$TestRoot='',[string]$TestSha='',[string]$TestRepository='',[string]$TestSelectionId='',[ValidateSet('legacy-v1','layered-v1')][string]$Profile='layered-v1') {
     $explicit=[bool]($TestRoot -or $TestSha -or $TestRepository -or $TestSelectionId)
-    $product=Read-UnityConfig $ConfigPath
+    $product=Read-UnityConfig $ConfigPath $Profile
     if ($explicit) {
         if (!$TestRoot -or !$TestSha -or !$TestRepository -or !$TestSelectionId) { throw 'TestRoot, TestSha, TestRepository and TestSelectionId required together.' }
         Assert-UnitySha $TestSha

@@ -19,11 +19,11 @@ param(
 )
 . "$PSScriptRoot/UnityContract.ps1"
 . "$PSScriptRoot/UnityTestSource.ps1"
-$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
 . "$PSScriptRoot/UnityProfiles.ps1"
-$profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $CandidatePath -Selected:$tests.selected
-$config=Read-UnityConfig $ConfigPath
+$profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $CandidatePath -Selected:([bool]($TestRoot -or $TestSha -or $TestRepository -or $TestSelectionId))
+$config=Read-UnityConfig $ConfigPath $profile.profile
 Assert-UnityProfileContract $profile $config
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile
 $legacy=$profile.profile -ceq 'legacy-v1'
 $caseCount=if($legacy){10}else{16}
 $assertionCount=if($legacy){18}else{20}
@@ -54,7 +54,7 @@ if ($Stage -ceq 'all') {
 }
 
 $env:WSS_CONFORMANCE_STAGE=$Stage
-$config=Read-UnityConfig $ConfigPath
+$config=Read-UnityConfig $ConfigPath $profile.profile
 if ($tests.selected) { foreach ($field in @('fixture_repository','fixture_commit','fixture_sha256','expected_cases','dotnet_expected_cases','multidevice_expected_cases')) { $config.$field=$tests.contract.$field } }
 
 if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }

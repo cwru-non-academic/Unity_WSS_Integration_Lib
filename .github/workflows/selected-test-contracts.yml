@@ -47,8 +47,9 @@ jobs:
           # Synthetic runner regression, never frozen campaign acceptance evidence.
           $legacy=Join-Path $env:GITHUB_WORKSPACE '.legacy-product'
           Copy-Item .github/scripts/* "$legacy/.github/scripts" -Recurse -Force
+          Copy-Item .github/unity-ci.json "$legacy/.github/unity-ci.json" -Force
           Copy-Item Conformance~/Prepare-Harness.ps1 "$legacy/Conformance~/Prepare-Harness.ps1" -Force
-          git -C $legacy -c user.name='Runner regression' -c user.email='runner@example.invalid' add .github/scripts Conformance~/Prepare-Harness.ps1
+          git -C $legacy -c user.name='Runner regression' -c user.email='runner@example.invalid' add .github/scripts .github/unity-ci.json Conformance~/Prepare-Harness.ps1
           git -C $legacy -c user.name='Runner regression' -c user.email='runner@example.invalid' commit -m 'Synthetic tooling regression only'
           if($LASTEXITCODE){throw 'Cannot prepare isolated legacy regression source.'}
           $sha=(git -C $legacy rev-parse HEAD).Trim()

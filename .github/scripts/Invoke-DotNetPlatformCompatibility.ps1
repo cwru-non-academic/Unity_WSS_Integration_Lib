@@ -17,7 +17,9 @@ param(
 )
 . "$PSScriptRoot/UnityContract.ps1"
 . "$PSScriptRoot/UnityTestSource.ps1"
-$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
+. "$PSScriptRoot/UnityProfiles.ps1"
+$profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $CandidatePath -Selected:([bool]($TestRoot -or $TestSha -or $TestRepository -or $TestSelectionId))
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile
 if (Test-Path -LiteralPath $OutputRoot) { throw 'Platform output root must be new.' }
 # This preserves all canonical cases/assertions, exact-source and projection gates
 # while proving that the same production commands run on this host platform.

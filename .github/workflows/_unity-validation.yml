@@ -22,7 +22,7 @@ jobs:
     outputs:
       wrapper: ${{ steps.sources.outputs.wrapper }}
       gui: ${{ steps.sources.outputs.gui }}
-      fixture: ${{ steps.sources.outputs.fixture }}
+      fixture: ${{ steps.fixture.outputs.fixture }}
       sdk: ${{ steps.sources.outputs.sdk }}
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +67,24 @@ jobs:
           "gui=$gui" >> $env:GITHUB_OUTPUT
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+      - name: Read immutable product payload profile
+        uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ steps.sources.outputs.wrapper }}
+          path: profile-product
+          lfs: true
+          persist-credentials: false
+      - name: Choose canonical fixture from the validated payload profile
+        id: fixture
+        shell: pwsh
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          . ./profile-product/.github/scripts/UnityContract.ps1
+          . ./profile-product/.github/scripts/UnityProfiles.ps1
+          $config=Read-UnityExecutionConfig ./profile-product/.github/unity-ci.json ./profile-product $env:MODE
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
   candidate-platforms:
     if: inputs.mode == 'candidate'
     needs: prerequisites
@@ -171,7 +189,9 @@ jobs:
             $options.CandidatePath = "$env:RUNNER_TEMP/resolved/candidate.json"
           }
           ./wrapper/.github/scripts/Invoke-DotNetConformance.ps1 @options
-          ./wrapper/.github/scripts/tests/Test-LayeredEvidence.ps1 -ResultsRoot $options.OutputRoot
+          $evidence=Get-Content (Join-Path $options.OutputRoot 'evidence.json') -Raw | ConvertFrom-Json
+          if($evidence.profile -ceq 'layered-v1') { ./wrapper/.github/scripts/tests/Test-LayeredEvidence.ps1 -ResultsRoot $options.OutputRoot }
+          elseif($evidence.profile -cne 'legacy-v1' -or $env:MODE -cne 'committed' -or $evidence.passed -ne 10 -or $evidence.assertion_expressions -ne 18){throw 'Invalid legacy evidence route.'}
       - uses: actions/upload-artifact@v4
         if: success()
         with:

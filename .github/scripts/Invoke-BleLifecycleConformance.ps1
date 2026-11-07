@@ -16,7 +16,9 @@ if ($Tests -and $Tests.selected) {
 } else {
     & "$WrapperRoot/Conformance~/Prepare-Harness.ps1" -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $ProjectionRoot -Role $Role -GuiRoot $GuiRoot -BleLifecycle
 }
-$config=Read-UnityConfig (Join-Path $WrapperRoot '.github/unity-ci.json')
+. "$PSScriptRoot/UnityProfiles.ps1"
+$profile=Get-WssCapabilityProfile ([WssProfileMetadata]::Read((Join-Path $ProjectionRoot 'WSS_Core_Interface.dll')))
+$config=Read-UnityConfig (Join-Path $WrapperRoot '.github/unity-ci.json') $profile
 $caseCount=$config.expected_cases.Count
 $assertionCount=if($caseCount -eq 10){18}else{20}
 Push-Location $harness

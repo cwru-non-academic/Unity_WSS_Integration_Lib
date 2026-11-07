@@ -138,11 +138,27 @@ function New-UnityProjection([string]$ArtifactRoot, [string]$WrapperRoot, [strin
     Assert-UnityProjection $Destination $record
     $record
 }
-function Read-UnityConfig([string]$Path) {
+function Read-UnityConfig([string]$Path,[ValidateSet('legacy-v1','layered-v1')][string]$Profile='layered-v1') {
     $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
     if ($config.schema -cne 'wss-unity-ci/v1' -or $config.branch -cne 'dev' -or $config.editor -cne '2022.3.62f3' -or
         $config.revision -cne '96770f904ca7' -or $config.test_framework -cne '1.1.33' -or
         $config.fixture_repository -cne 'cwru-non-academic/CSharp_WSS_Integration_Lib' -or $config.expected_cases.Count -notin @(10,16)) { throw 'Unexpected Unity CI contract.' }
+    if($config.PSObject.Properties['profiles']) {
+        if(@(Compare-Object @('legacy-v1','layered-v1') @($config.profiles.PSObject.Properties.Name) -CaseSensitive).Count){throw 'Both reviewed profile contracts are required.'}
+        $fields=@('fixture_repository','fixture_commit','fixture_sha256','expected_cases','dotnet_expected_cases','multidevice_expected_cases')
+        foreach($name in @('legacy-v1','layered-v1')) {
+            $entry=$config.profiles.$name
+            if(@(Compare-Object $fields @($entry.PSObject.Properties.Name) -CaseSensitive).Count){throw 'Unexpected profile contract fields.'}
+            $hash=if($name -ceq 'legacy-v1'){'f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2'}else{'96812ab33be7ede8840ddb78131a50796fd3f797d9627f958251b3e58796baf8'}
+            $commit=if($name -ceq 'legacy-v1'){'7145e2307f997f703748530bf74311ef94455e98'}else{'fc427c5b8bc6534a7d02f00283830072572aa03a'}
+            $count=if($name -ceq 'legacy-v1'){10}else{16}
+            if($entry.fixture_repository -cne 'cwru-non-academic/CSharp_WSS_Integration_Lib' -or $entry.fixture_sha256 -cne $hash -or $entry.fixture_commit -cne $commit -or $entry.expected_cases.Count -ne $count -or $entry.dotnet_expected_cases.Count -ne $count -or $entry.multidevice_expected_cases.Count -ne ($count-10)){throw 'Unreviewed canonical profile inventory.'}
+        }
+        foreach($field in $fields){
+            if(($config.$field -join "`n") -cne ($config.profiles.'layered-v1'.$field -join "`n")){throw 'Compatibility fields must equal the mandatory modern profile.'}
+        }
+        foreach($field in $fields){$config.$field=$config.profiles.$Profile.$field}
+    } elseif($Profile -ceq 'legacy-v1' -and $config.fixture_sha256 -cne 'f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2'){throw 'Missing reviewed legacy profile.'}
     Assert-UnitySha $config.fixture_commit
     if ($config.fixture_sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Missing fixture digest.' }
     $config

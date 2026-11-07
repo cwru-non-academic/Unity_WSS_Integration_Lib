@@ -28,6 +28,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Read the exact candidate wrapper contract independently of the current application pin
+        if: inputs.mode == 'candidate'
+        uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ inputs.wrapper_sha }}
+          path: candidate-contract
+          persist-credentials: false
       - name: Validate exact source and execution contract
         id: sources
         shell: pwsh
@@ -38,7 +46,8 @@ jobs:
           GUI_SHA: ${{ inputs.gui_sha }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $config = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
+          $configPath = if ($env:MODE -ceq 'candidate') { 'candidate-contract/.github/unity-ci.json' } else { '.github/unity-ci.json' }
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
           if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
           if ($env:ROLE -cnotin @('wrapper','gui') -or $env:MODE -cnotin @('candidate','committed')) { throw 'Invalid validation role/mode.' }
           $wrapper = $env:WRAPPER_SHA

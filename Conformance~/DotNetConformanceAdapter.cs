@@ -60,6 +60,12 @@ internal sealed class DotNetConformanceAdapter : IDisposable
     { lock (_gate) { CheckTick(); _controller.StimulateAnalog(channel, pw, amplitude, ipi); } }
     public void StimulateNormalized(string channel, float input)
     { lock (_gate) { CheckTick(); _controller.StimulateNormalized(channel, input); } }
+    public void StimWithMode(string channel, float input)
+    { lock (_gate) { CheckTick(); _controller.StimWithMode(channel, input); } }
+    public void LoadParamsJson()
+    { lock (_gate) { CheckTick(); _controller.LoadParamsJson(); } }
+    public Wss.ModelModule.ModelConfigController GetModelConfigCTRL()
+    { lock (_gate) { CheckTick(); return _controller.GetModelConfigCTRL(); } }
     public void UpdateEventRatio(int target, int ratio, int eventId)
     { lock (_gate) { CheckTick(); _controller.UpdateEventRatio(target, ratio, eventId); } }
     public void StopStimulation(int target)

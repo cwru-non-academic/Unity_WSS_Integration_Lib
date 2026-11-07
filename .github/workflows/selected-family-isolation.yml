@@ -1,0 +1,89 @@
+name: Inactive selected family isolation proof
+on:
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  selected:
+    name: Selected family (${{ matrix.role }}, ${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [wrapper, gui]
+        os: [windows-2022, ubuntu-latest, macos-15-intel, macos-15]
+        include:
+          - {os: windows-2022, label: Windows}
+          - {os: ubuntu-latest, label: Ubuntu}
+          - {os: macos-15-intel, label: macOS-x64, uname: x86_64}
+          - {os: macos-15, label: macOS-arm64, uname: arm64}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: eb1439afcd35ffc8691abeea7b59a06a6837b41f
+          path: wrapper
+          lfs: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/GUI_Unity_WSS_Application
+          ref: 064de7b37ff8538c401b3eca2101a5d525f13367
+          path: gui
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: fc427c5b8bc6534a7d02f00283830072572aa03a
+          path: fixture
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        if: matrix.role == 'wrapper'
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: eb1439afcd35ffc8691abeea7b59a06a6837b41f
+          path: selected-tests
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        if: matrix.role == 'gui'
+        with:
+          repository: cwru-non-academic/GUI_Unity_WSS_Application
+          ref: 064de7b37ff8538c401b3eca2101a5d525f13367
+          path: selected-tests
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.316
+      - name: Run actual selected family with independent mandatory baseline
+        shell: pwsh
+        env:
+          ROLE: ${{ matrix.role }}
+          EXPECTED_UNAME: ${{ matrix.uname }}
+        run: |
+          if($env:EXPECTED_UNAME -and (!$IsMacOS -or (& uname -m) -cne $env:EXPECTED_UNAME)){throw 'Native runner architecture mismatch.'}
+          . ./tooling/.github/scripts/SelectedProcessIsolation.ps1
+          $testSha=if($env:ROLE -ceq 'gui'){'064de7b37ff8538c401b3eca2101a5d525f13367'}else{'eb1439afcd35ffc8691abeea7b59a06a6837b41f'}
+          $testRepo=if($env:ROLE -ceq 'gui'){'cwru-non-academic/GUI_Unity_WSS_Application'}else{'cwru-non-academic/Unity_WSS_Integration_Lib'}
+          # Family-only proof: no Core selection evidence, activation, or release authority.
+          $options=@{ToolRoot="$env:GITHUB_WORKSPACE/tooling";ToolSha=$env:GITHUB_SHA;WrapperRoot="$env:GITHUB_WORKSPACE/wrapper";WrapperSha='eb1439afcd35ffc8691abeea7b59a06a6837b41f';FixtureRoot="$env:GITHUB_WORKSPACE/fixture";ConfigPath="$env:GITHUB_WORKSPACE/tooling/.github/unity-ci.json";OutputRoot="$env:RUNNER_TEMP/selected-results";Role=$env:ROLE;TestRoot="$env:GITHUB_WORKSPACE/selected-tests";TestSha=$testSha;TestRepository=$testRepo;TestSelectionId=('a'*64)}
+          if($env:ROLE -ceq 'gui'){$options.GuiRoot="$env:GITHUB_WORKSPACE/gui";$options.GuiSha='064de7b37ff8538c401b3eca2101a5d525f13367'}
+          Invoke-UnitySelectedWithMandatoryBaseline "$env:GITHUB_WORKSPACE/tooling/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1" $options "$env:RUNNER_TEMP/mandatory-baseline"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selected-family-${{ matrix.role }}-${{ matrix.label }}
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/mandatory-baseline/**/*.json
+            ${{ runner.temp }}/mandatory-baseline/**/*.xml
+            ${{ runner.temp }}/mandatory-baseline/**/*.log
+            ${{ runner.temp }}/selected-results/**/*.json
+            ${{ runner.temp }}/selected-results/**/*.xml
+            ${{ runner.temp }}/selected-results/**/*.log

@@ -29,3 +29,36 @@ function Invoke-CredentialFreeSelectedPowerShell([string]$Runner,[hashtable]$Opt
     foreach($key in $Options.Keys){$arguments+="-$key";$arguments+=[string]$Options[$key]}
     Invoke-CredentialFreeSelectedProcess (Get-Command pwsh -ErrorAction Stop).Source $arguments
 }
+
+# Kept in the trusted parent, never serialized into selected-process state.
+function Get-UnityEvidenceInventory([string]$Root) {
+    if (!(Test-Path -LiteralPath $Root -PathType Container)) { throw 'Mandatory evidence root missing.' }
+    $rootItem=Get-Item -LiteralPath $Root -Force
+    $items=@($rootItem)+@(Get-ChildItem -LiteralPath $Root -Recurse -Force)
+    $inventory=@{}
+    foreach($item in $items){
+        if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Mandatory evidence contains a filesystem link.'}
+        $relative=[IO.Path]::GetRelativePath($rootItem.FullName,$item.FullName)
+        $inventory[$relative]=if($item.PSIsContainer){'directory'}else{(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+    }
+    return $inventory
+}
+function Assert-UnityEvidenceInventory([string]$Root,[hashtable]$Expected) {
+    $actual=Get-UnityEvidenceInventory $Root
+    if($actual.Count -ne $Expected.Count){throw 'Mandatory evidence inventory changed.'}
+    foreach($key in $Expected.Keys){
+        if(!$actual.ContainsKey($key) -or $actual[$key] -cne $Expected[$key]){throw 'Mandatory evidence inventory changed.'}
+    }
+}
+
+function Invoke-UnitySelectedWithMandatoryBaseline([string]$Runner,[hashtable]$Options,[string]$BaselineRoot,[switch]$ConformanceOnly) {
+    $baselineOptions=$Options.Clone()
+    foreach($key in @('TestRoot','TestSha','TestRepository','TestSelectionId')){$baselineOptions.Remove($key)}
+    $baselineOptions.OutputRoot=$BaselineRoot
+    Invoke-CredentialFreeSelectedPowerShell $Runner $baselineOptions
+    $baselineEvidence=Join-Path $BaselineRoot $(if($ConformanceOnly){'evidence.json'}else{'platform-evidence.json'})
+    if(!(Test-Path -LiteralPath $baselineEvidence -PathType Leaf)){throw 'Trusted mandatory baseline evidence missing.'}
+    $mandatoryInventory=Get-UnityEvidenceInventory $BaselineRoot
+    Invoke-CredentialFreeSelectedPowerShell $Runner $Options
+    Assert-UnityEvidenceInventory $BaselineRoot $mandatoryInventory
+}

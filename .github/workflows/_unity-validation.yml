@@ -46,6 +46,7 @@ jobs:
           GUI_SHA: ${{ inputs.gui_sha }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $ownConfig = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
           $configPath = if ($env:MODE -ceq 'candidate') { 'candidate-contract/.github/unity-ci.json' } else { '.github/unity-ci.json' }
           $config = Get-Content $configPath -Raw | ConvertFrom-Json
           if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
@@ -53,7 +54,7 @@ jobs:
           $wrapper = $env:WRAPPER_SHA
           $gui = $env:GUI_SHA
           if ($env:MODE -ceq 'candidate') {
-            if (!$config.baseline_ready) { throw 'Candidate promotion baseline approval remains pending; ordinary committed-state .NET CI is separate.' }
+            if (!$ownConfig.baseline_ready -or !$config.baseline_ready) { throw 'Candidate promotion baseline approval remains pending; ordinary committed-state .NET CI is separate.' }
             if ($env:GITHUB_REF -cnotin @('refs/heads/dev','refs/heads/main') -or $wrapper -cnotmatch '^[0-9a-f]{40}$' -or $gui -cnotmatch '^[0-9a-f]{40}$') { throw 'Candidate preflight requires exact dev source SHAs.' }
           } elseif ($env:ROLE -ceq 'gui') {
             $entry = git ls-tree HEAD -- Assets/SubModules/WSSInterfacingModule

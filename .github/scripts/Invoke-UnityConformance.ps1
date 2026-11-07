@@ -1,4 +1,8 @@
 param(
+    [string]$TestRoot='',
+    [string]$TestSha='',
+    [string]$TestRepository='',
+    [string]$TestSelectionId='',
     [Parameter(Mandatory)][string]$GuiRoot,
     [Parameter(Mandatory)][string]$WrapperRoot,
     [Parameter(Mandatory)][string]$FixtureRoot,
@@ -14,7 +18,11 @@ param(
     [ValidateRange(30,1800)][int]$TimeoutSeconds=240
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTestSource.ps1"
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
 $config=Read-UnityConfig $ConfigPath
+if ($tests.selected) { foreach ($field in @('fixture_repository','fixture_commit','fixture_sha256','expected_cases','dotnet_expected_cases','multidevice_expected_cases')) { $config.$field=$tests.contract.$field } }
+
 & "$PSScriptRoot/Assert-UnityPrerequisites.ps1" -ConfigPath $ConfigPath -UnityExe $UnityExe
 if (Test-Path -LiteralPath $OutputRoot) { throw 'OutputRoot must be new.' }
 Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
@@ -39,7 +47,11 @@ if ($Mode -ceq 'candidate') {
     $candidate=$projection.candidate
 }
 $harness=Join-Path $OutputRoot 'harness'
-& (Join-Path $GuiRoot 'tools/UnityConformance/Prepare-Harness.ps1') -CSharpIntegrationRoot $FixtureRoot -Destination $harness -WrapperRoot $WrapperRoot -ProjectionRoot $projectionRoot
+if ($tests.selected) {
+    & (Get-UnitySelectedTestFile $tests 'Prepare-UnityHarness.ps1') -GuiRoot $GuiRoot -CSharpIntegrationRoot $FixtureRoot -Destination $harness -WrapperRoot $WrapperRoot -ProjectionRoot $projectionRoot
+} else {
+    & (Join-Path $GuiRoot 'tools/UnityConformance/Prepare-Harness.ps1') -CSharpIntegrationRoot $FixtureRoot -Destination $harness -WrapperRoot $WrapperRoot -ProjectionRoot $projectionRoot
+}
 if (!$?) { throw 'Harness preparation failed.' }
 $adapted=[IO.File]::ReadAllText((Join-Path $harness 'Assets/Tests/Editor/StimulationControllerConformanceTests.cs'))
 $canonical=[IO.File]::ReadAllText($fixturePath)
@@ -55,8 +67,10 @@ Assert-UnityResults $xmlPath $config
 Assert-UnityProjection $projectionRoot $projection
 Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
 Assert-UnitySource $WrapperRoot $WrapperSha
+Assert-UnityTestSource $tests
 $evidence=[ordered]@{
     schema='wss-unity-evidence/v1'; role=$Role; mode=$Mode; candidate=$candidate
+    test_root=$tests.root; test_sha=$tests.sha; test_repository=$tests.repository; test_selection_id=$tests.selection_id; test_contract_sha256=$tests.contract_sha256
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     editor=$config.editor; revision=$config.revision; test_framework=$config.test_framework
     run_repository=$env:GITHUB_REPOSITORY; run_id=$env:GITHUB_RUN_ID; run_sha=$env:GITHUB_SHA

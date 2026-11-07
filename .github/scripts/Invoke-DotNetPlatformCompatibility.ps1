@@ -1,4 +1,8 @@
 param(
+    [string]$TestRoot='',
+    [string]$TestSha='',
+    [string]$TestRepository='',
+    [string]$TestSelectionId='',
     [Parameter(Mandatory)][string]$WrapperRoot,
     [Parameter(Mandatory)][string]$FixtureRoot,
     [Parameter(Mandatory)][string]$WrapperSha,
@@ -12,15 +16,17 @@ param(
     [string]$CandidatePath=''
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTestSource.ps1"
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
 if (Test-Path -LiteralPath $OutputRoot) { throw 'Platform output root must be new.' }
 # This preserves all canonical cases/assertions, exact-source and projection gates
 # while proving that the same production commands run on this host platform.
-& "$PSScriptRoot/Invoke-DotNetConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'conformance') -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -Mode $Mode -ArtifactRoot $ArtifactRoot -CandidatePath $CandidatePath
+& "$PSScriptRoot/Invoke-DotNetConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'conformance') -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -Mode $Mode -ArtifactRoot $ArtifactRoot -CandidatePath $CandidatePath -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
 if (!$?) { throw 'Platform command conformance failed.' }
 $record=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/projection.json') -Raw | ConvertFrom-Json
 $projection=if ($Mode -ceq 'candidate') { Join-Path $OutputRoot 'conformance/projection' } else { Join-Path $WrapperRoot $UnityPluginPath }
 & "$PSScriptRoot/Test-UnityReceiver.ps1" -ProjectionRoot $projection -Record $record -Scratch (Join-Path $OutputRoot 'inventory-negative')
-& "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle') -Role $Role -GuiRoot $GuiRoot
+& "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle') -Role $Role -GuiRoot $GuiRoot -Tests $tests
 # Keep diagnostics visible through the existing workflow's root/conformance globs.
 # This does not require changing workflow permissions or its required contexts.
 Copy-Item -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/regression.json') -Destination (Join-Path $OutputRoot 'ble-lifecycle-regression.json')
@@ -29,7 +35,11 @@ $bleResults=@(Get-ChildItem -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/n
 if ($bleResults.Count -ne 1) { throw 'Missing BLE lifecycle NUnit result.' }
 Copy-Item -LiteralPath $bleResults[0].FullName -Destination (Join-Path $OutputRoot 'conformance/ble-lifecycle-results.xml')
 $probe=Join-Path $OutputRoot 'probe'
-& (Join-Path $WrapperRoot 'Conformance~/Prepare-PlatformHarness.ps1') -Destination $probe -ProjectionRoot $projection
+if ($tests.selected) {
+    & (Get-UnitySelectedTestFile $tests 'Prepare-PlatformHarness.ps1') -WrapperRoot $WrapperRoot -Destination $probe -ProjectionRoot $projection
+} else {
+    & (Join-Path $WrapperRoot 'Conformance~/Prepare-PlatformHarness.ps1') -Destination $probe -ProjectionRoot $projection
+}
 $publish=Join-Path $OutputRoot 'publish'
 Push-Location $probe
 try {
@@ -73,6 +83,7 @@ Assert-UnityProjection $projection $record
 Assert-UnitySource $WrapperRoot $WrapperSha
 Assert-UnitySource $FixtureRoot (Read-UnityConfig $ConfigPath).fixture_commit
 if ($GuiRoot) { Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule }
+Assert-UnityTestSource $tests
 $evidence=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/evidence.json') -Raw | ConvertFrom-Json
 $evidence.schema='wss-dotnet-platform-evidence/v1'
 $evidence | Add-Member -NotePropertyName platform_result_sha256 -NotePropertyValue ((Get-FileHash -LiteralPath $result).Hash.ToLowerInvariant())

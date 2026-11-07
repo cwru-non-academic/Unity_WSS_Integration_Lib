@@ -1,4 +1,5 @@
 param(
+    $Tests=$null,
     [Parameter(Mandatory)][string]$WrapperRoot,
     [Parameter(Mandatory)][string]$FixtureRoot,
     [Parameter(Mandatory)][string]$ProjectionRoot,
@@ -10,7 +11,11 @@ param(
 if (Test-Path -LiteralPath $OutputRoot) { throw 'BLE regression output must be new.' }
 $null=New-Item -ItemType Directory -Path $OutputRoot
 $harness=Join-Path $OutputRoot 'harness'
-& "$WrapperRoot/Conformance~/Prepare-Harness.ps1" -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $ProjectionRoot -Role $Role -GuiRoot $GuiRoot -BleLifecycle
+if ($Tests -and $Tests.selected) {
+    & (Get-UnitySelectedTestFile $Tests 'Prepare-Harness.ps1') -WrapperRoot $WrapperRoot -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $ProjectionRoot -Role $Role -GuiRoot $GuiRoot -BleLifecycle
+} else {
+    & "$WrapperRoot/Conformance~/Prepare-Harness.ps1" -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $ProjectionRoot -Role $Role -GuiRoot $GuiRoot -BleLifecycle
+}
 $config=Read-UnityConfig (Join-Path $WrapperRoot '.github/unity-ci.json')
 Push-Location $harness
 try {

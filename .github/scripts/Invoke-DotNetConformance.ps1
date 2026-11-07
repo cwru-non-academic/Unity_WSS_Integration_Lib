@@ -1,4 +1,8 @@
 param(
+    [string]$TestRoot='',
+    [string]$TestSha='',
+    [string]$TestRepository='',
+    [string]$TestSelectionId='',
     [Parameter(Mandatory)][string]$WrapperRoot,
     [Parameter(Mandatory)][string]$FixtureRoot,
     [Parameter(Mandatory)][string]$WrapperSha,
@@ -14,6 +18,8 @@ param(
     [ValidateRange(30,1800)][int]$TimeoutSeconds=300
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTestSource.ps1"
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
 $previousStage = $env:WSS_CONFORMANCE_STAGE
 try {
 # Ordinary and candidate callers must execute both isolated stages by default.
@@ -33,6 +39,8 @@ if ($Stage -ceq 'all') {
 
 $env:WSS_CONFORMANCE_STAGE=$Stage
 $config=Read-UnityConfig $ConfigPath
+if ($tests.selected) { foreach ($field in @('fixture_repository','fixture_commit','fixture_sha256','expected_cases','dotnet_expected_cases','multidevice_expected_cases')) { $config.$field=$tests.contract.$field } }
+
 if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
 if (Test-Path -LiteralPath $OutputRoot) { throw 'OutputRoot must be new.' }
 Assert-UnitySource $WrapperRoot $WrapperSha
@@ -57,7 +65,11 @@ if ($Mode -ceq 'candidate') {
     $candidate=$projection.candidate
 }
 $harness=Join-Path $OutputRoot 'harness'
-& (Join-Path $WrapperRoot 'Conformance~/Prepare-Harness.ps1') -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $projectionRoot -Role $Role -GuiRoot $GuiRoot
+if ($tests.selected) {
+    & (Get-UnitySelectedTestFile $tests 'Prepare-Harness.ps1') -WrapperRoot $WrapperRoot -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $projectionRoot -Role $Role -GuiRoot $GuiRoot
+} else {
+    & (Join-Path $WrapperRoot 'Conformance~/Prepare-Harness.ps1') -CSharpIntegrationRoot $FixtureRoot -Destination $harness -ProjectionRoot $projectionRoot -Role $Role -GuiRoot $GuiRoot
+}
 if (!$?) { throw 'Portable harness preparation failed.' }
 Push-Location $harness
 try { $sdk=(& dotnet --version).Trim(); if ($LASTEXITCODE -ne 0 -or $sdk -cne $config.dotnet_sdk) { throw 'Wrong .NET SDK.' } } finally { Pop-Location }
@@ -86,8 +98,10 @@ Assert-UnitySource $WrapperRoot $WrapperSha
 if ($GuiRoot) { Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule }
 $inputs=Get-Content -LiteralPath (Join-Path $harness 'conformance-inputs.json') -Raw | ConvertFrom-Json
 if ($inputs.assertion_expressions -ne 20 -or $inputs.canonical_fixture_sha256 -cne $config.fixture_sha256) { throw 'Harness provenance mismatch.' }
+Assert-UnityTestSource $tests
 $evidence=[ordered]@{
     schema='wss-dotnet-evidence/v1'; execution='dotnet'; role=$Role; mode=$Mode; candidate=$candidate
+    test_root=$tests.root; test_sha=$tests.sha; test_repository=$tests.repository; test_selection_id=$tests.selection_id; test_contract_sha256=$tests.contract_sha256
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     sdk=$sdk; target_framework='net9.0'; test_framework='NUnit 3.14.0'; unity_executed=$false
     run_repository=$env:GITHUB_REPOSITORY; run_id=$env:GITHUB_RUN_ID; run_sha=$env:GITHUB_SHA

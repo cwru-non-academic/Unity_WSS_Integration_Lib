@@ -98,3 +98,7 @@ if(!$IsWindows){
         if(!$rejected){throw 'Case-distinct added evidence escaped inventory.'}
     }
 }
+
+$coreRecheck=$bridge.IndexOf('Assert-UnityEvidenceInventory $CoreToolsRoot $coreInventory')
+$contextRecheck=$bridge.IndexOf("throw 'Frozen Core selection inputs changed.'")
+if($coreRecheck -le $gate -or $contextRecheck -le $coreRecheck -or $emission -le $contextRecheck){throw 'Core bootstrap and frozen input recheck must precede evidence execution.'}

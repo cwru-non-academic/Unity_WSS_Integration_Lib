@@ -1,0 +1,50 @@
+{
+  "schema": "wss-unity-tests/v1",
+  "fixture_repository": "cwru-non-academic/CSharp_WSS_Integration_Lib",
+  "fixture_commit": "fc427c5b8bc6534a7d02f00283830072572aa03a",
+  "fixture_sha256": "96812ab33be7ede8840ddb78131a50796fd3f797d9627f958251b3e58796baf8",
+  "expected_cases": [
+    "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
+    "InitializationThroughCSharpImplementationPassesCoreConformance",
+    "NormalizedScenario(\"normalized.minus-0.2\")",
+    "NormalizedScenario(\"normalized.0.0\")",
+    "NormalizedScenario(\"normalized.0.37\")",
+    "NormalizedScenario(\"normalized.0.5\")",
+    "NormalizedScenario(\"normalized.1.0\")",
+    "NormalizedScenario(\"normalized.1.2\")",
+    "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming",
+    "StimulationSequence(\"analog.multichannel-isolation\")",
+    "StimulationSequence(\"normalized.multichannel-isolation\")",
+    "StimulationSequence(\"modeled.p.pw.single\")",
+    "StimulationSequence(\"modeled.p.pa.single\")",
+    "StimulationSequence(\"modeled.pd.pw.single\")",
+    "StimulationSequence(\"modeled.pd.pa.single\")"
+  ],
+  "dotnet_expected_cases": [
+    "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
+    "InitializationThroughCSharpImplementationPassesCoreConformance",
+    "normalized.minus-0.2",
+    "normalized.0.0",
+    "normalized.0.37",
+    "normalized.0.5",
+    "normalized.1.0",
+    "normalized.1.2",
+    "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming",
+    "analog.multichannel-isolation",
+    "normalized.multichannel-isolation",
+    "modeled.p.pw.single",
+    "modeled.p.pa.single",
+    "modeled.pd.pw.single",
+    "modeled.pd.pa.single"
+  ],
+  "multidevice_expected_cases": [
+    "analog.multidevice-isolation",
+    "normalized.multidevice-isolation",
+    "modeled.p.pw.multi",
+    "modeled.p.pa.multi",
+    "modeled.pd.pw.multi",
+    "modeled.pd.pa.multi"
+  ]
+}

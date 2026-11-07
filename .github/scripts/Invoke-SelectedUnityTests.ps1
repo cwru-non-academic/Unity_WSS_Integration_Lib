@@ -18,6 +18,7 @@ param(
     [switch]$ConformanceOnly
 )
 $ErrorActionPreference='Stop'
+. "$PSScriptRoot/SelectedProcessIsolation.ps1"
 . "$PSScriptRoot/UnityContract.ps1"
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:WSS_TEST_SELECTION_ID -cnotmatch '^[a-f0-9]{64}$') { throw 'Require actual GitHub identity and trusted prerequisite selection output.' }
 $role=if ($TargetId -ceq 'unity-gui') { 'gui' } else { 'wrapper' }
@@ -47,7 +48,7 @@ if ($binding.selection_id -cne $env:WSS_TEST_SELECTION_ID -or $binding.target_id
 $options=@{WrapperRoot=$WrapperRoot;WrapperSha=$WrapperSha;GuiRoot=$GuiRoot;GuiSha=$GuiSha;FixtureRoot=$FixtureRoot;ConfigPath=$ConfigPath;OutputRoot=$OutputRoot;Role=$role;Mode=$Mode;ArtifactRoot=$ArtifactRoot;CandidatePath=$CandidatePath;TestRoot=$TestRoot;TestSha=$binding.test_commit;TestRepository=$binding.test_repository;TestSelectionId=$env:WSS_TEST_SELECTION_ID}
 # Never obtain a runner or validator from selected source.
 $runner=if ($ConformanceOnly) { 'Invoke-DotNetConformance.ps1' } else { 'Invoke-DotNetPlatformCompatibility.ps1' }
-& (Join-Path $PSScriptRoot $runner) @options
+Invoke-CredentialFreeSelectedPowerShell (Join-Path $PSScriptRoot $runner) $options
 if (!$?) { throw 'Selected and mandatory suite gates failed.' }
 # Emission rechecks all source identities only after every trusted runner gate passed.
 & node $bootstrap evidence $TargetId $ContextPath $rootsPath (Join-Path $BindingOutputRoot 'evidence.json')

@@ -1,0 +1,26 @@
+name: Host reload regression
+on:
+  pull_request:
+    paths: ['UnityImplementation/**', 'Conformance~/**', 'Tests~/**', 'Plugins/**', '.github/workflows/host-reload.yml']
+  push:
+    branches: [dev, main]
+    paths: ['UnityImplementation/**', 'Conformance~/**', 'Tests~/**', 'Plugins/**', '.github/workflows/host-reload.yml']
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Test production lifecycle with engine shim and emulator
+        shell: pwsh
+        run: |
+          $payload = Join-Path $env:GITHUB_WORKSPACE 'Plugins/WSS_Core_Interface'
+          dotnet test 'Tests~/HostLifecycle/Wss.Unity.HostLifecycle.Tests.csproj' -c Release "-p:WSS_ARTIFACT_DIR=$payload" "-p:WSS_TRANSPORT_ARTIFACT_DIR=$payload"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

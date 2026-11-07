@@ -62,4 +62,7 @@ try {
  (Get-Content $workflow -Raw).Replace($sha,'dev') | Set-Content $workflow
  Reject {& $check} 'mutable caller pin'
 } finally {Pop-Location;foreach($k in $keys){[Environment]::SetEnvironmentVariable($k,$old[$k])}}
+$candidateWorkflow=Get-Content (Join-Path $source '.github/workflows/_unity-platform-validation.yml') -Raw
+if([regex]::Matches($candidateWorkflow,[regex]::Escape("if(`$env:TOOLING_SHA -cne `$sha)")).Count -ne 3){throw 'Every candidate job, including aggregator, must bind its tooling input.'}
+if($candidateWorkflow -match '(?s)ref: \$\{\{ inputs.wrapper_sha \}\}\s+path: tooling'){throw 'Product checkout cannot overwrite trusted aggregation tooling.'}
 "PASS: $count tooling/caller boundary rejections; no application payload executed."

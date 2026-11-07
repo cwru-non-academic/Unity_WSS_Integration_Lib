@@ -280,14 +280,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: cwru-non-academic/Unity_WSS_Integration_Lib
-          ref: ${{ inputs.tooling_sha }}
-          path: tooling
+          path: caller
           persist-credentials: false
+      - name: Reject arbitrary tooling inputs before any tooling execution
+        id: tooling_binding
+        shell: pwsh
+        working-directory: caller
+        env:
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          TOOLING_SHA: ${{ inputs.tooling_sha }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){throw 'Caller checkout differs from actual run.'}
+          if($env:ROLE -ceq 'wrapper') {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/Unity_WSS_Integration_Lib' -or $env:WRAPPER_SHA -cne $env:GITHUB_SHA){throw 'Wrong wrapper tooling caller.'}
+            $sha=$env:WRAPPER_SHA
+          } else {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/GUI_Unity_WSS_Application' -or $env:GITHUB_WORKFLOW_REF -cnotmatch '^cwru-non-academic/GUI_Unity_WSS_Application/(\.github/workflows/(?:unity-ci|wss-preflight)\.yml)@'){throw 'Unregistered GUI tooling caller.'}
+            $body=Get-Content -LiteralPath $Matches[1] -Raw
+            $pins=[regex]::Matches($body,'(?m)^\s*uses: cwru-non-academic/Unity_WSS_Integration_Lib/\.github/workflows/_unity-validation\.yml@([a-f0-9]{40})\s*$')
+            if($pins.Count -ne 1){throw 'Exactly one literal reviewed Unity workflow pin is required.'}
+            $sha=$pins[0].Groups[1].Value
+          }
+          if($env:TOOLING_SHA -cne $sha){throw 'Tooling input differs from the literal authenticated caller.'}
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/Unity_WSS_Integration_Lib
-          ref: ${{ inputs.wrapper_sha }}
+          ref: ${{ inputs.tooling_sha }}
           path: tooling
           persist-credentials: false
       - uses: actions/download-artifact@v4

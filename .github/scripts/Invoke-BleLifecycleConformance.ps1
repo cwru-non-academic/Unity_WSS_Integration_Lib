@@ -8,6 +8,10 @@ param(
     [string]$GuiRoot=''
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityProfiles.ps1"
+. "$PSScriptRoot/UnityHarness.ps1"
+$profile=Get-WssCapabilityProfile ([WssProfileMetadata]::Read((Join-Path $ProjectionRoot 'WSS_Core_Interface.dll')))
+Assert-UnityHarnessBuilders $WrapperRoot $profile
 if (Test-Path -LiteralPath $OutputRoot) { throw 'BLE regression output must be new.' }
 $null=New-Item -ItemType Directory -Path $OutputRoot
 $harness=Join-Path $OutputRoot 'harness'

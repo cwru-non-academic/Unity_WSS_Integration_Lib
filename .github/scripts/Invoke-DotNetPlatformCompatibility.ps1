@@ -18,7 +18,9 @@ param(
 . "$PSScriptRoot/UnityContract.ps1"
 . "$PSScriptRoot/UnityTestSource.ps1"
 . "$PSScriptRoot/UnityProfiles.ps1"
+. "$PSScriptRoot/UnityHarness.ps1"
 $profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $CandidatePath -Selected:([bool]($TestRoot -or $TestSha -or $TestRepository -or $TestSelectionId))
+Assert-UnityHarnessBuilders $WrapperRoot $profile.profile
 $tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile
 if (Test-Path -LiteralPath $OutputRoot) { throw 'Platform output root must be new.' }
 # This preserves all canonical cases/assertions, exact-source and projection gates

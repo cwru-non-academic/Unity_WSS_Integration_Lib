@@ -21,7 +21,7 @@ function Assert-UnityTestSource($Tests) {
         }
     }
 }
-function Resolve-UnityTestSource([string]$WrapperRoot,[string]$WrapperSha,[string]$ConfigPath,[string]$Role='wrapper',[string]$GuiRoot='',[string]$GuiSha='',[string]$TestRoot='',[string]$TestSha='',[string]$TestRepository='',[string]$TestSelectionId='',[ValidateSet('legacy-v1','layered-v1')][string]$Profile='layered-v1') {
+function Resolve-UnityTestSource([string]$WrapperRoot,[string]$WrapperSha,[string]$ConfigPath,[string]$Role='wrapper',[string]$GuiRoot='',[string]$GuiSha='',[string]$TestRoot='',[string]$TestSha='',[string]$TestRepository='',[string]$TestSelectionId='',[ValidateSet('legacy-v1','layered-v1')][string]$Profile='layered-v1',[string]$ToolRoot='') {
     $explicit=[bool]($TestRoot -or $TestSha -or $TestRepository -or $TestSelectionId)
     $product=Read-UnityConfig $ConfigPath $Profile
     if ($explicit) {
@@ -29,7 +29,7 @@ function Resolve-UnityTestSource([string]$WrapperRoot,[string]$WrapperSha,[strin
         Assert-UnitySha $TestSha
         $expected=if ($Role -ceq 'gui') { 'cwru-non-academic/GUI_Unity_WSS_Application' } else { 'cwru-non-academic/Unity_WSS_Integration_Lib' }
         if ($TestRepository -cne $expected -or $TestSelectionId -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid immutable test selection binding.' }
-        if ([IO.Path]::GetFullPath($ConfigPath) -cne [IO.Path]::GetFullPath((Join-Path $WrapperRoot '.github/unity-ci.json')) -and
+        if ((!$ToolRoot -or [IO.Path]::GetFullPath($ConfigPath) -cne [IO.Path]::GetFullPath((Join-Path $ToolRoot '.github/unity-ci.json'))) -and [IO.Path]::GetFullPath($ConfigPath) -cne [IO.Path]::GetFullPath((Join-Path $WrapperRoot '.github/unity-ci.json')) -and
             (!$GuiRoot -or [IO.Path]::GetFullPath($ConfigPath) -cne [IO.Path]::GetFullPath((Join-Path $GuiRoot '.github/unity-ci.json')))) { throw 'Product config must remain in a product checkout.' }
         if ($product.baseline_ready -cne $true) { throw 'Selected tests cannot override product readiness.' }
     } else {

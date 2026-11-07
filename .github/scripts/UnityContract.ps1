@@ -203,7 +203,7 @@ function Assert-UnityMultiStageEvidence([string]$Root,$Single,$Config) {
     }
     $multi = Get-Content (Join-Path $multiRoot 'evidence.json') -Raw | ConvertFrom-Json
     Assert-UnitySameCandidate $multi.candidate $Single.candidate
-    foreach ($field in @('test_root','test_sha','test_repository','test_selection_id','test_contract_sha256')) {
+    foreach ($field in @('test_root','test_sha','test_repository','test_selection_id','test_contract_sha256','tooling_root','tooling_sha','tooling_config_sha256')) {
         if ($Single.PSObject.Properties[$field] -or $multi.PSObject.Properties[$field]) {
             if (!$Single.PSObject.Properties[$field] -or !$multi.PSObject.Properties[$field] -or $Single.$field -cne $multi.$field) { throw "Multi-stage selected test binding differs: $field" }
         }

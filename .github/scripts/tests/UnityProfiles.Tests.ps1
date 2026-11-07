@@ -99,5 +99,7 @@ foreach($name in @('Prepare-Harness.ps1','Prepare-PlatformHarness.ps1')) {
  Reject {Assert-UnityHarnessBuilders $scratch $branchProfile} "mutated $name"
  [IO.File]::WriteAllText($path,$original)
 }
+Remove-Item -LiteralPath (Join-Path $scratch 'Conformance~/Prepare-Harness.ps1')
+Reject {Assert-UnityHarnessBuilders $scratch $branchProfile} 'missing historical/product builder cannot fall back to tooling source'
 $count++
 "$count profile rejection/classification checks passed."

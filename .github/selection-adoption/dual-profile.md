@@ -15,3 +15,11 @@ The hosted legacy regression commits only a synthetic test checkout with the exa
 The protected scripts bind both external mandatory harness builders by strict UTF-8/LF SHA-256. Only the reviewed historical builder is additionally allowed for legacy payloads. Product code, host adapters, tests and payloads remain on their original branches.
 
 The identical host-lifecycle workflow retains the modern reload suite for modern products. Historical products run their complete existing canonical/BLE/platform baseline instead; no modern test or host implementation is copied to main to make it compile. Both native Mac consumer jobs continue to run through the ordinary platform workflow.
+
+## Separate immutable tooling for GUI products
+
+A GUI caller derives its tooling revision from the literal reusable workflow SHA in its exact checked-out workflow. It does not accept tooling identity from selected tests, a branch, or an arbitrary workflow input. Candidate platform calls compare their tooling input to that same authenticated caller pin before executing tooling. Wrapper callers use their own exact source revision.
+
+ToolRoot and ToolSha are paired assertions against the executing helper checkout, not a mechanism to select helper code. ConfigPath must be the common config inside that checkout. Clean roots, hidden index flags, ignored execution inputs and filesystem links are checked; tooling/config are rechecked after execution. BLE receives the same explicit config instead of reading historical product config. Product wrappers, GUI source and gitlinks remain distinct and unchanged. External product builders still require protected hashes and cannot fall back to tooling source when missing.
+
+The hosted separation matrix uses immutable actual GUI dev/main products and their own gitlinks for ordinary checks. Modern candidate regression uses the previously staged GUI064de7b and modern wrapper eb1439a plus the authenticated approved producer package. These are regression proofs, not new frozen campaign acceptance or release receipts.

@@ -30,6 +30,15 @@ $new=(Get-Content (Join-Path $DevRoot '.github/unity-candidate.json') -Raw | Con
 $null=Resolve-WssReviewedProfile (Join-Path $MainRoot 'Plugins/WSS_Core_Interface') $old
 $null=Resolve-WssReviewedProfile (Join-Path $DevRoot 'Plugins/WSS_Core_Interface') $new -SelectionEnabledCampaign
 $count+=2
+$tagged=$new | ConvertTo-Json | ConvertFrom-Json
+$tagged.archive='WSS-Universal-v1.2.3.zip'
+# Classification retains the existing resolver's tagged diagnostic format.
+# This synthetic metadata check is not producer authentication or acceptance.
+$null=Resolve-WssReviewedProfile (Join-Path $DevRoot 'Plugins/WSS_Core_Interface') $tagged -SelectionEnabledCampaign
+$count++
+$taggedLegacy=$old | ConvertTo-Json | ConvertFrom-Json
+$taggedLegacy.archive='WSS-Universal-v1.2.3.zip'
+Reject {Resolve-WssReviewedProfile (Join-Path $MainRoot 'Plugins/WSS_Core_Interface') $taggedLegacy} 'legacy archive identity remains exact'
 Reject {Resolve-WssReviewedProfile (Join-Path $MainRoot 'Plugins/WSS_Core_Interface') $old -SelectionEnabledCampaign} 'campaign cannot downgrade to legacy'
 Reject {Resolve-WssReviewedProfile (Join-Path $MainRoot 'Plugins/WSS_Core_Interface') $new} 'legacy DLL modern producer'
 Reject {Resolve-WssReviewedProfile (Join-Path $DevRoot 'Plugins/WSS_Core_Interface') $old} 'modern DLL legacy producer'

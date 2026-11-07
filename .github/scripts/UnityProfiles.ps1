@@ -49,13 +49,13 @@ function Resolve-WssReviewedProfile([string]$PayloadRoot,$Producer,[switch]$Sele
   '76803c03c7aa55b8951499053641ad9ce83504b8'=@{profile='legacy-v1';dll='738691490a76ceb56b38aa580148116db1a46601117246890a129eb0e6bfed20';archive='856566f5710a5662254373cc8c5d3ecf3527b89506f0df140824261ca50d2167';run='42230527501';artifact='13507483694'}
 
  }
- if($Producer.repository -cne 'cwru-non-academic/WSSCore' -or $Producer.commit -cnotmatch '^[a-f0-9]{40}$' -or $Producer.archive -cne 'WSS-Universal-ci.zip' -or $Producer.sha256 -cnotmatch '^[a-f0-9]{64}$' -or [string]$Producer.run_id -cnotmatch '^[1-9][0-9]*$' -or [string]$Producer.artifact_id -cnotmatch '^[1-9][0-9]*$'){throw 'Malformed authenticated producer identity.'}
+ if($Producer.repository -cne 'cwru-non-academic/WSSCore' -or $Producer.commit -cnotmatch '^[a-f0-9]{40}$' -or $Producer.archive -cnotmatch '^WSS-Universal-[A-Za-z0-9._-]+\.zip$' -or $Producer.sha256 -cnotmatch '^[a-f0-9]{64}$' -or [string]$Producer.run_id -cnotmatch '^[1-9][0-9]*$' -or [string]$Producer.artifact_id -cnotmatch '^[1-9][0-9]*$'){throw 'Malformed authenticated producer identity.'}
  $dll=Join-Path $PayloadRoot 'WSS_Core_Interface.dll'
  $hash=(Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
  $profile=Get-WssCapabilityProfile ([WssProfileMetadata]::Read($dll))
  if($registry.ContainsKey([string]$Producer.commit)) {
   $expected=$registry[[string]$Producer.commit]
-  if($profile -cne $expected.profile -or $hash -cne $expected.dll -or $Producer.sha256 -cne $expected.archive -or [string]$Producer.run_id -cne $expected.run -or [string]$Producer.artifact_id -cne $expected.artifact){throw 'Legacy producer/package/profile identity mismatch.'}
+  if($Producer.archive -cne 'WSS-Universal-ci.zip' -or $profile -cne $expected.profile -or $hash -cne $expected.dll -or $Producer.sha256 -cne $expected.archive -or [string]$Producer.run_id -cne $expected.run -or [string]$Producer.artifact_id -cne $expected.artifact){throw 'Legacy producer/package/profile identity mismatch.'}
  } elseif($profile -ceq 'legacy-v1') {throw 'Legacy profile is not in the reviewed immutable producer allowlist.'}
  if($SelectionEnabledCampaign -and $profile -cne 'layered-v1'){throw 'Selection-enabled campaigns require the complete layered profile.'}
  [pscustomobject]@{schema='wss-unity-profile/v1';profile=$profile;producer=$Producer;core_dll_sha256=$hash}

@@ -28,6 +28,7 @@ jobs:
         shell: pwsh
         run: |
           ./.github/scripts/tests/UnityPromotion.Tests.ps1
+          ./.github/scripts/tests/Test-CandidateReadiness.ps1
           ./.github/scripts/tests/WssReleaseReceipt.Tests.ps1
           ./.github/scripts/tests/MacOSConsumerContract.Tests.ps1
   validate:

@@ -1,4 +1,8 @@
 param(
+    [string]$ToolRoot='',
+    [string]$ToolSha='',
+    [string]$ConfigPath='',
+    [string]$WrapperSha='',
     $Tests=$null,
     [Parameter(Mandatory)][string]$WrapperRoot,
     [Parameter(Mandatory)][string]$FixtureRoot,
@@ -8,6 +12,10 @@ param(
     [string]$GuiRoot=''
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTooling.ps1"
+if(!$WrapperSha){$WrapperSha=(Invoke-UnityGit $WrapperRoot @('rev-parse','HEAD')).Trim()}
+if(!$ConfigPath){$ConfigPath=Join-Path $WrapperRoot '.github/unity-ci.json'}
+$tooling=Resolve-UnityTooling $ToolRoot $ToolSha $WrapperRoot $WrapperSha $ConfigPath
 . "$PSScriptRoot/UnityProfiles.ps1"
 . "$PSScriptRoot/UnityHarness.ps1"
 $profile=Get-WssCapabilityProfile ([WssProfileMetadata]::Read((Join-Path $ProjectionRoot 'WSS_Core_Interface.dll')))
@@ -22,7 +30,7 @@ if ($Tests -and $Tests.selected) {
 }
 . "$PSScriptRoot/UnityProfiles.ps1"
 $profile=Get-WssCapabilityProfile ([WssProfileMetadata]::Read((Join-Path $ProjectionRoot 'WSS_Core_Interface.dll')))
-$config=Read-UnityConfig (Join-Path $WrapperRoot '.github/unity-ci.json') $profile
+$config=Read-UnityConfig $ConfigPath $profile
 $caseCount=$config.expected_cases.Count
 $assertionCount=if($caseCount -eq 10){18}else{20}
 Push-Location $harness
@@ -41,5 +49,6 @@ $canonical=@($cases | Where-Object { $_.GetAttribute('name') -cin $config.dotnet
 if ($canonical.Count -ne $caseCount -or @(Compare-Object $config.dotnet_expected_cases @($canonical | ForEach-Object { $_.GetAttribute('name') }) -CaseSensitive).Count) { throw 'Missing canonical BLE lifecycle scenario.' }
 $inputs=Get-Content -LiteralPath (Join-Path $harness 'conformance-inputs.json') -Raw | ConvertFrom-Json
 if ($inputs.assertion_expressions -ne $assertionCount) { throw 'Canonical assertions changed.' }
+Assert-UnityTooling $tooling $WrapperRoot $WrapperSha
 @{schema='wss-ble-lifecycle-regression/v1';role=$Role;execution='dotnet-fake-transport';canonical_cases=$caseCount;assertion_expressions=$assertionCount;lifecycle_cases=3;unity_executed=$false;native_ble_executed=$false;hardware_access=$false} | ConvertTo-Json | Set-Content (Join-Path $OutputRoot 'regression.json')
 Write-Output "PASS: $caseCount canonical cases through the BLE lifetime adapter, plus three cancellation/bytes/disposal cases; fake transport only."

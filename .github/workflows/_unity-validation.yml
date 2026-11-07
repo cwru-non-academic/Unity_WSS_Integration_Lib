@@ -24,6 +24,7 @@ jobs:
       gui: ${{ steps.sources.outputs.gui }}
       fixture: ${{ steps.fixture.outputs.fixture }}
       sdk: ${{ steps.sources.outputs.sdk }}
+      tooling: ${{ steps.tooling.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,6 +68,32 @@ jobs:
           "gui=$gui" >> $env:GITHUB_OUTPUT
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+      - name: Bind tooling to the literal caller workflow revision
+        id: tooling
+        shell: pwsh
+        env:
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ steps.sources.outputs.wrapper }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){throw 'Caller checkout differs from actual run.'}
+          if($env:ROLE -ceq 'wrapper') {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/Unity_WSS_Integration_Lib' -or $env:WRAPPER_SHA -cne $env:GITHUB_SHA){throw 'Wrong wrapper tooling caller.'}
+            $sha=$env:WRAPPER_SHA
+          } else {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/GUI_Unity_WSS_Application' -or $env:GITHUB_WORKFLOW_REF -cnotmatch '^cwru-non-academic/GUI_Unity_WSS_Application/(\.github/workflows/(?:unity-ci|wss-preflight)\.yml)@'){throw 'Unregistered GUI tooling caller.'}
+            $body=Get-Content -LiteralPath $Matches[1] -Raw
+            $pins=[regex]::Matches($body,'(?m)^\s*uses: cwru-non-academic/Unity_WSS_Integration_Lib/\.github/workflows/_unity-validation\.yml@([a-f0-9]{40})\s*$')
+            if($pins.Count -ne 1){throw 'Exactly one literal reviewed Unity workflow pin is required.'}
+            $sha=$pins[0].Groups[1].Value
+          }
+          "sha=$sha" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ steps.tooling.outputs.sha }}
+          path: tooling-contract
+          persist-credentials: false
       - name: Read immutable product payload profile
         uses: actions/checkout@v4
         with:
@@ -81,9 +108,15 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
         run: |
-          . ./profile-product/.github/scripts/UnityContract.ps1
-          . ./profile-product/.github/scripts/UnityProfiles.ps1
-          $config=Read-UnityExecutionConfig ./profile-product/.github/unity-ci.json ./profile-product $env:MODE
+          . ./tooling-contract/.github/scripts/UnityContract.ps1
+          . ./tooling-contract/.github/scripts/UnityProfiles.ps1
+          . ./tooling-contract/.github/scripts/UnityTooling.ps1
+          $root=Join-Path $env:GITHUB_WORKSPACE 'tooling-contract'
+          $product=Join-Path $env:GITHUB_WORKSPACE 'profile-product'
+          $sha=(git -C $root rev-parse HEAD).Trim()
+          $productSha=(git -C $product rev-parse HEAD).Trim()
+          $null=Resolve-UnityTooling $root $sha $product $productSha (Join-Path $root '.github/unity-ci.json')
+          $config=Read-UnityExecutionConfig (Join-Path $root '.github/unity-ci.json') $product $env:MODE
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
   candidate-platforms:
     if: inputs.mode == 'candidate'
@@ -95,6 +128,7 @@ jobs:
       gui_sha: ${{ needs.prerequisites.outputs.gui }}
       fixture_sha: ${{ needs.prerequisites.outputs.fixture }}
       sdk: ${{ needs.prerequisites.outputs.sdk }}
+      tooling_sha: ${{ needs.prerequisites.outputs.tooling }}
       candidate_json: ${{ inputs.candidate_json }}
     secrets:
       WSS_GITHUB_APP_PRIVATE_KEY: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
@@ -117,6 +151,12 @@ jobs:
           repositories: WSSCore
           permission-contents: read
           permission-actions: read
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ needs.prerequisites.outputs.tooling }}
+          path: tooling
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/Unity_WSS_Integration_Lib
@@ -145,7 +185,7 @@ jobs:
         id: guard
         shell: pwsh
         run: |
-          $lock=Get-Content wrapper/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          $lock=Get-Content tooling/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
           if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
           "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@v4
@@ -162,10 +202,10 @@ jobs:
           GH_TOKEN: ${{ steps.read.outputs.token }}
           CANDIDATE_JSON: ${{ inputs.candidate_json }}
         run: |
-          . ./wrapper/.github/scripts/UnityPromotion.ps1
+          . ./tooling/.github/scripts/UnityPromotion.ps1
           $c = $env:CANDIDATE_JSON | ConvertFrom-Json
           Assert-UnityProducer $c
-          ./wrapper/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+          ./tooling/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
       - name: Execute canonical cases through shared production wrapper source
         shell: pwsh
         env:
@@ -178,7 +218,9 @@ jobs:
             WrapperRoot = "$env:GITHUB_WORKSPACE/wrapper"
             FixtureRoot = "$env:GITHUB_WORKSPACE/fixture"
             WrapperSha = $env:WRAPPER_SHA
-            ConfigPath = "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json"
+            ConfigPath = "$env:GITHUB_WORKSPACE/tooling/.github/unity-ci.json"
+            ToolRoot = "$env:GITHUB_WORKSPACE/tooling"
+            ToolSha = '${{ needs.prerequisites.outputs.tooling }}'
             OutputRoot = "$env:RUNNER_TEMP/conformance-results"
             Mode = $env:MODE
             Role = $env:ROLE
@@ -188,9 +230,9 @@ jobs:
             $options.ArtifactRoot = "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal"
             $options.CandidatePath = "$env:RUNNER_TEMP/resolved/candidate.json"
           }
-          ./wrapper/.github/scripts/Invoke-DotNetConformance.ps1 @options
+          ./tooling/.github/scripts/Invoke-DotNetConformance.ps1 @options
           $evidence=Get-Content (Join-Path $options.OutputRoot 'evidence.json') -Raw | ConvertFrom-Json
-          if($evidence.profile -ceq 'layered-v1') { ./wrapper/.github/scripts/tests/Test-LayeredEvidence.ps1 -ResultsRoot $options.OutputRoot }
+          if($evidence.profile -ceq 'layered-v1') { ./tooling/.github/scripts/tests/Test-LayeredEvidence.ps1 -ResultsRoot $options.OutputRoot }
           elseif($evidence.profile -cne 'legacy-v1' -or $env:MODE -cne 'committed' -or $evidence.passed -ne 10 -or $evidence.assertion_expressions -ne 18){throw 'Invalid legacy evidence route.'}
       - uses: actions/upload-artifact@v4
         if: success()

@@ -1,4 +1,6 @@
 param(
+    [string]$ToolRoot='',
+    [string]$ToolSha='',
     [string]$TestRoot='',
     [string]$TestSha='',
     [string]$TestRepository='',
@@ -18,6 +20,8 @@ param(
     [ValidateRange(30,1800)][int]$TimeoutSeconds=300
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTooling.ps1"
+$tooling=Resolve-UnityTooling $ToolRoot $ToolSha $WrapperRoot $WrapperSha $ConfigPath $TestRoot
 . "$PSScriptRoot/UnityTestSource.ps1"
 . "$PSScriptRoot/UnityProfiles.ps1"
 . "$PSScriptRoot/UnityHarness.ps1"
@@ -25,7 +29,7 @@ $profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $Candida
 Assert-UnityHarnessBuilders $WrapperRoot $profile.profile
 $config=Read-UnityConfig $ConfigPath $profile.profile
 Assert-UnityProfileContract $profile $config
-$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile -ToolRoot $tooling.root
 $legacy=$profile.profile -ceq 'legacy-v1'
 $caseCount=if($legacy){10}else{16}
 $assertionCount=if($legacy){18}else{20}
@@ -117,8 +121,10 @@ if ($GuiRoot) { Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule }
 $inputs=Get-Content -LiteralPath (Join-Path $harness 'conformance-inputs.json') -Raw | ConvertFrom-Json
 if ($inputs.assertion_expressions -ne $assertionCount -or $inputs.canonical_fixture_sha256 -cne $config.fixture_sha256) { throw 'Harness provenance mismatch.' }
 Assert-UnityTestSource $tests
+Assert-UnityTooling $tooling $WrapperRoot $WrapperSha $TestRoot
 $evidence=[ordered]@{
     schema='wss-dotnet-evidence/v1'; execution='dotnet'; role=$Role; mode=$Mode; candidate=$candidate
+    tooling_root=$tooling.root;tooling_sha=$tooling.sha;tooling_config_sha256=$tooling.config_sha256
     test_root=$tests.root; test_sha=$tests.sha; test_repository=$tests.repository; test_selection_id=$tests.selection_id; test_contract_sha256=$tests.contract_sha256
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     sdk=$sdk; target_framework='net9.0'; test_framework='NUnit 3.14.0'; unity_executed=$false

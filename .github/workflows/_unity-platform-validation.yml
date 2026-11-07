@@ -7,6 +7,7 @@ on:
       gui_sha: {type: string, required: true}
       fixture_sha: {type: string, required: true}
       sdk: {type: string, required: true}
+      tooling_sha: {type: string, required: true}
       candidate_json: {type: string, required: true}
     secrets:
       WSS_GITHUB_APP_PRIVATE_KEY: {required: true}
@@ -28,6 +29,32 @@ jobs:
           - {os: windows-2022, label: Windows}
           - {os: ubuntu-latest, label: Ubuntu}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: caller
+          persist-credentials: false
+      - name: Reject arbitrary tooling inputs before any tooling execution
+        id: tooling_binding
+        shell: pwsh
+        working-directory: caller
+        env:
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          TOOLING_SHA: ${{ inputs.tooling_sha }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){throw 'Caller checkout differs from actual run.'}
+          if($env:ROLE -ceq 'wrapper') {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/Unity_WSS_Integration_Lib' -or $env:WRAPPER_SHA -cne $env:GITHUB_SHA){throw 'Wrong wrapper tooling caller.'}
+            $sha=$env:WRAPPER_SHA
+          } else {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/GUI_Unity_WSS_Application' -or $env:GITHUB_WORKFLOW_REF -cnotmatch '^cwru-non-academic/GUI_Unity_WSS_Application/(\.github/workflows/(?:unity-ci|wss-preflight)\.yml)@'){throw 'Unregistered GUI tooling caller.'}
+            $body=Get-Content -LiteralPath $Matches[1] -Raw
+            $pins=[regex]::Matches($body,'(?m)^\s*uses: cwru-non-academic/Unity_WSS_Integration_Lib/\.github/workflows/_unity-validation\.yml@([a-f0-9]{40})\s*$')
+            if($pins.Count -ne 1){throw 'Exactly one literal reviewed Unity workflow pin is required.'}
+            $sha=$pins[0].Groups[1].Value
+          }
+          if($env:TOOLING_SHA -cne $sha){throw 'Tooling input differs from the literal authenticated caller.'}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.sdk }}
@@ -40,6 +67,12 @@ jobs:
           repositories: WSSCore
           permission-contents: read
           permission-actions: read
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ inputs.tooling_sha }}
+          path: tooling
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/Unity_WSS_Integration_Lib
@@ -63,7 +96,7 @@ jobs:
         id: guard
         shell: pwsh
         run: |
-          $lock=Get-Content wrapper/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          $lock=Get-Content tooling/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
           if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
           "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@v4
@@ -78,10 +111,10 @@ jobs:
           GH_TOKEN: ${{ steps.read.outputs.token }}
           CANDIDATE_JSON: ${{ inputs.candidate_json }}
         run: |
-          . ./wrapper/.github/scripts/UnityPromotion.ps1
+          . ./tooling/.github/scripts/UnityPromotion.ps1
           $c = $env:CANDIDATE_JSON | ConvertFrom-Json
           Assert-UnityProducer $c
-          ./wrapper/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+          ./tooling/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
       - uses: actions/setup-python@v5
         if: runner.os == 'Linux'
         with:
@@ -101,7 +134,7 @@ jobs:
           WRAPPER_SHA: ${{ inputs.wrapper_sha }}
           GUI_SHA: ${{ inputs.gui_sha }}
         run: |
-          ./wrapper/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha $env:GUI_SHA -Role $env:ROLE -ConfigPath "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results" -Mode candidate -ArtifactRoot "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal" -CandidatePath "$env:RUNNER_TEMP/resolved/candidate.json"
+          ./tooling/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -ToolRoot "$env:GITHUB_WORKSPACE/tooling" -ToolSha '${{ inputs.tooling_sha }}' -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha $env:GUI_SHA -Role $env:ROLE -ConfigPath "$env:GITHUB_WORKSPACE/tooling/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results" -Mode candidate -ArtifactRoot "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal" -CandidatePath "$env:RUNNER_TEMP/resolved/candidate.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -132,6 +165,32 @@ jobs:
           EXPECTED_UNAME: ${{ matrix.uname }}
         run: |
           if (!$IsMacOS -or (& uname -m) -cne $env:EXPECTED_UNAME) { throw 'Native macOS runner architecture mismatch.' }
+      - uses: actions/checkout@v4
+        with:
+          path: caller
+          persist-credentials: false
+      - name: Reject arbitrary tooling inputs before any tooling execution
+        id: tooling_binding
+        shell: pwsh
+        working-directory: caller
+        env:
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          TOOLING_SHA: ${{ inputs.tooling_sha }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){throw 'Caller checkout differs from actual run.'}
+          if($env:ROLE -ceq 'wrapper') {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/Unity_WSS_Integration_Lib' -or $env:WRAPPER_SHA -cne $env:GITHUB_SHA){throw 'Wrong wrapper tooling caller.'}
+            $sha=$env:WRAPPER_SHA
+          } else {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/GUI_Unity_WSS_Application' -or $env:GITHUB_WORKFLOW_REF -cnotmatch '^cwru-non-academic/GUI_Unity_WSS_Application/(\.github/workflows/(?:unity-ci|wss-preflight)\.yml)@'){throw 'Unregistered GUI tooling caller.'}
+            $body=Get-Content -LiteralPath $Matches[1] -Raw
+            $pins=[regex]::Matches($body,'(?m)^\s*uses: cwru-non-academic/Unity_WSS_Integration_Lib/\.github/workflows/_unity-validation\.yml@([a-f0-9]{40})\s*$')
+            if($pins.Count -ne 1){throw 'Exactly one literal reviewed Unity workflow pin is required.'}
+            $sha=$pins[0].Groups[1].Value
+          }
+          if($env:TOOLING_SHA -cne $sha){throw 'Tooling input differs from the literal authenticated caller.'}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.sdk }}
@@ -144,6 +203,12 @@ jobs:
           repositories: WSSCore
           permission-contents: read
           permission-actions: read
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ inputs.tooling_sha }}
+          path: tooling
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/Unity_WSS_Integration_Lib
@@ -167,7 +232,7 @@ jobs:
         id: guard
         shell: pwsh
         run: |
-          $lock=Get-Content wrapper/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
+          $lock=Get-Content tooling/.github/scripts/wss-ci.lock.json -Raw|ConvertFrom-Json
           if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
           "commit=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@v4
@@ -182,10 +247,10 @@ jobs:
           GH_TOKEN: ${{ steps.read.outputs.token }}
           CANDIDATE_JSON: ${{ inputs.candidate_json }}
         run: |
-          . ./wrapper/.github/scripts/UnityPromotion.ps1
+          . ./tooling/.github/scripts/UnityPromotion.ps1
           $c = $env:CANDIDATE_JSON | ConvertFrom-Json
           Assert-UnityProducer $c
-          ./wrapper/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+          ./tooling/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
       - name: Verify candidate packaging, host transport selection and canonical production commands
         shell: pwsh
         env:
@@ -193,7 +258,7 @@ jobs:
           WRAPPER_SHA: ${{ inputs.wrapper_sha }}
           GUI_SHA: ${{ inputs.gui_sha }}
         run: |
-          ./wrapper/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha $env:GUI_SHA -Role $env:ROLE -ConfigPath "$env:GITHUB_WORKSPACE/wrapper/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results" -Mode candidate -ArtifactRoot "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal" -CandidatePath "$env:RUNNER_TEMP/resolved/candidate.json"
+          ./tooling/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -ToolRoot "$env:GITHUB_WORKSPACE/tooling" -ToolSha '${{ inputs.tooling_sha }}' -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -WrapperSha $env:WRAPPER_SHA -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha $env:GUI_SHA -Role $env:ROLE -ConfigPath "$env:GITHUB_WORKSPACE/tooling/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/platform-results" -Mode candidate -ArtifactRoot "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal" -CandidatePath "$env:RUNNER_TEMP/resolved/candidate.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -215,8 +280,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          path: caller
+          persist-credentials: false
+      - name: Reject arbitrary tooling inputs before any tooling execution
+        id: tooling_binding
+        shell: pwsh
+        working-directory: caller
+        env:
+          ROLE: ${{ inputs.role }}
+          WRAPPER_SHA: ${{ inputs.wrapper_sha }}
+          TOOLING_SHA: ${{ inputs.tooling_sha }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){throw 'Caller checkout differs from actual run.'}
+          if($env:ROLE -ceq 'wrapper') {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/Unity_WSS_Integration_Lib' -or $env:WRAPPER_SHA -cne $env:GITHUB_SHA){throw 'Wrong wrapper tooling caller.'}
+            $sha=$env:WRAPPER_SHA
+          } else {
+            if($env:GITHUB_REPOSITORY -cne 'cwru-non-academic/GUI_Unity_WSS_Application' -or $env:GITHUB_WORKFLOW_REF -cnotmatch '^cwru-non-academic/GUI_Unity_WSS_Application/(\.github/workflows/(?:unity-ci|wss-preflight)\.yml)@'){throw 'Unregistered GUI tooling caller.'}
+            $body=Get-Content -LiteralPath $Matches[1] -Raw
+            $pins=[regex]::Matches($body,'(?m)^\s*uses: cwru-non-academic/Unity_WSS_Integration_Lib/\.github/workflows/_unity-validation\.yml@([a-f0-9]{40})\s*$')
+            if($pins.Count -ne 1){throw 'Exactly one literal reviewed Unity workflow pin is required.'}
+            $sha=$pins[0].Groups[1].Value
+          }
+          if($env:TOOLING_SHA -cne $sha){throw 'Tooling input differs from the literal authenticated caller.'}
+      - uses: actions/checkout@v4
+        with:
           repository: cwru-non-academic/Unity_WSS_Integration_Lib
-          ref: ${{ inputs.wrapper_sha }}
+          ref: ${{ inputs.tooling_sha }}
           path: tooling
           persist-credentials: false
       - uses: actions/download-artifact@v4

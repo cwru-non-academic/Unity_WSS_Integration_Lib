@@ -200,4 +200,14 @@ function Assert-UnityMultiStageEvidence([string]$Root,$Single,$Config) {
     }
     if ((Get-FileHash -LiteralPath (Join-Path $multiRoot 'projection.json')).Hash -cne (Get-FileHash -LiteralPath (Join-Path $Root 'projection.json')).Hash) { throw 'Multi-stage package projection differs.' }
     Assert-UnityResults (Join-Path $multiRoot 'results.xml') $Config -DotNet -Stage multi
+    if ($Single.PSObject.Properties['test_selection_id'] -and $Single.test_selection_id) {
+        $baselineRoot=Join-Path $Root 'mandatory-baseline'
+        $baseline=Get-Content -LiteralPath (Join-Path $baselineRoot 'evidence.json') -Raw | ConvertFrom-Json
+        if (!$baseline.PSObject.Properties['test_selection_id'] -or $baseline.test_selection_id -or
+            $baseline.wrapper_sha -cne $Single.wrapper_sha -or $baseline.gui_sha -cne $Single.gui_sha -or
+            $baseline.role -cne $Single.role -or $baseline.mode -cne $Single.mode) { throw 'Selected suite cannot replace the fixed-product mandatory baseline.' }
+        Assert-UnitySameCandidate $baseline.candidate $Single.candidate
+        Assert-UnityResults (Join-Path $baselineRoot 'results.xml') $Config -DotNet
+        Assert-UnityMultiStageEvidence $baselineRoot $baseline $Config
+    }
 }

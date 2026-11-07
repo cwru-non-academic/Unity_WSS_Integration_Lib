@@ -22,11 +22,19 @@ jobs:
     outputs:
       wrapper: ${{ steps.sources.outputs.wrapper }}
       gui: ${{ steps.sources.outputs.gui }}
-      fixture: ${{ steps.sources.outputs.fixture }}
+      fixture: ${{ steps.fixture.outputs.fixture }}
       sdk: ${{ steps.sources.outputs.sdk }}
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
+      - name: Read the exact candidate wrapper contract independently of the current application pin
+        if: inputs.mode == 'candidate'
+        uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ inputs.wrapper_sha }}
+          path: candidate-contract
           persist-credentials: false
       - name: Validate exact source and execution contract
         id: sources
@@ -38,13 +46,15 @@ jobs:
           GUI_SHA: ${{ inputs.gui_sha }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $config = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
-          if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
+          $ownConfig = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
+          $configPath = if ($env:MODE -ceq 'candidate') { 'candidate-contract/.github/unity-ci.json' } else { '.github/unity-ci.json' }
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          if ($ownConfig.automated_execution -cne 'dotnet' -or $ownConfig.dotnet_sdk -cne '9.0.316' -or $config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
           if ($env:ROLE -cnotin @('wrapper','gui') -or $env:MODE -cnotin @('candidate','committed')) { throw 'Invalid validation role/mode.' }
           $wrapper = $env:WRAPPER_SHA
           $gui = $env:GUI_SHA
           if ($env:MODE -ceq 'candidate') {
-            if (!$config.baseline_ready) { throw 'Candidate promotion baseline approval remains pending; ordinary committed-state .NET CI is separate.' }
+            if (!$ownConfig.baseline_ready -or !$config.baseline_ready) { throw 'Candidate promotion baseline approval remains pending; ordinary committed-state .NET CI is separate.' }
             if ($env:GITHUB_REF -cnotin @('refs/heads/dev','refs/heads/main') -or $wrapper -cnotmatch '^[0-9a-f]{40}$' -or $gui -cnotmatch '^[0-9a-f]{40}$') { throw 'Candidate preflight requires exact dev source SHAs.' }
           } elseif ($env:ROLE -ceq 'gui') {
             $entry = git ls-tree HEAD -- Assets/SubModules/WSSInterfacingModule
@@ -57,6 +67,24 @@ jobs:
           "gui=$gui" >> $env:GITHUB_OUTPUT
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
+      - name: Read immutable product payload profile
+        uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ steps.sources.outputs.wrapper }}
+          path: profile-product
+          lfs: true
+          persist-credentials: false
+      - name: Choose canonical fixture from the validated payload profile
+        id: fixture
+        shell: pwsh
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          . ./profile-product/.github/scripts/UnityContract.ps1
+          . ./profile-product/.github/scripts/UnityProfiles.ps1
+          $config=Read-UnityExecutionConfig ./profile-product/.github/unity-ci.json ./profile-product $env:MODE
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
   candidate-platforms:
     if: inputs.mode == 'candidate'
     needs: prerequisites
@@ -161,6 +189,9 @@ jobs:
             $options.CandidatePath = "$env:RUNNER_TEMP/resolved/candidate.json"
           }
           ./wrapper/.github/scripts/Invoke-DotNetConformance.ps1 @options
+          $evidence=Get-Content (Join-Path $options.OutputRoot 'evidence.json') -Raw | ConvertFrom-Json
+          if($evidence.profile -ceq 'layered-v1') { ./wrapper/.github/scripts/tests/Test-LayeredEvidence.ps1 -ResultsRoot $options.OutputRoot }
+          elseif($evidence.profile -cne 'legacy-v1' -or $env:MODE -cne 'committed' -or $evidence.passed -ne 10 -or $evidence.assertion_expressions -ne 18){throw 'Invalid legacy evidence route.'}
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -172,6 +203,10 @@ jobs:
             ${{ runner.temp }}/conformance-results/results.xml
             ${{ runner.temp }}/conformance-results/dotnet.log
             ${{ runner.temp }}/conformance-results/projection.json
+            ${{ runner.temp }}/conformance-results/multi/evidence.json
+            ${{ runner.temp }}/conformance-results/multi/results.xml
+            ${{ runner.temp }}/conformance-results/multi/dotnet.log
+            ${{ runner.temp }}/conformance-results/multi/projection.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

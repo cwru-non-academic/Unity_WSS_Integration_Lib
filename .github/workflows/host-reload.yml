@@ -1,0 +1,55 @@
+name: Host reload regression
+on:
+  pull_request:
+    paths: ['UnityImplementation/**', 'Conformance~/**', 'Tests~/**', 'Plugins/**', '.github/scripts/**', '.github/unity-ci.json', '.github/workflows/host-reload.yml']
+  push:
+    branches: [dev, main]
+    paths: ['UnityImplementation/**', 'Conformance~/**', 'Tests~/**', 'Plugins/**', '.github/scripts/**', '.github/unity-ci.json', '.github/workflows/host-reload.yml']
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve installed product profile
+        id: profile
+        shell: pwsh
+        run: |
+          . ./.github/scripts/UnityContract.ps1
+          . ./.github/scripts/UnityProfiles.ps1
+          $profile=Resolve-UnityExecutionProfile $env:GITHUB_WORKSPACE committed '' ''
+          $config=Read-UnityExecutionConfig .github/unity-ci.json $env:GITHUB_WORKSPACE
+          "name=$($profile.profile)" >> $env:GITHUB_OUTPUT
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        if: steps.profile.outputs.name == 'legacy-v1'
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: ${{ steps.profile.outputs.fixture }}
+          path: .legacy-fixture
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.316'
+      - name: Test production lifecycle with engine shim and emulator
+        if: steps.profile.outputs.name == 'layered-v1'
+        shell: pwsh
+        run: |
+          $payload = Join-Path $env:GITHUB_WORKSPACE 'Plugins/WSS_Core_Interface'
+          dotnet test 'Tests~/HostLifecycle/Wss.Unity.HostLifecycle.Tests.csproj' -c Release "-p:WSS_ARTIFACT_DIR=$payload" "-p:WSS_TRANSPORT_ARTIFACT_DIR=$payload"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve the complete historical host baseline
+        if: steps.profile.outputs.name == 'legacy-v1'
+        shell: pwsh
+        run: |
+          # Keep fixture checkout outside the immutable product root.
+          $product=Join-Path $env:RUNNER_TEMP 'legacy-product'
+          git clone --no-hardlinks $env:GITHUB_WORKSPACE $product
+          if($LASTEXITCODE){throw 'Cannot create immutable historical product checkout.'}
+          git -C $product checkout --detach $env:GITHUB_SHA
+          if($LASTEXITCODE){throw 'Historical product checkout differs from this run.'}
+          & "$product/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1" -WrapperRoot $product -WrapperSha $env:GITHUB_SHA -FixtureRoot "$env:GITHUB_WORKSPACE/.legacy-fixture" -ConfigPath "$product/.github/unity-ci.json" -OutputRoot "$env:RUNNER_TEMP/legacy-host-baseline"

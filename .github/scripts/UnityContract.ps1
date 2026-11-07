@@ -138,27 +138,46 @@ function New-UnityProjection([string]$ArtifactRoot, [string]$WrapperRoot, [strin
     Assert-UnityProjection $Destination $record
     $record
 }
-function Read-UnityConfig([string]$Path) {
+function Read-UnityConfig([string]$Path,[ValidateSet('legacy-v1','layered-v1')][string]$Profile='layered-v1') {
     $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
     if ($config.schema -cne 'wss-unity-ci/v1' -or $config.branch -cne 'dev' -or $config.editor -cne '2022.3.62f3' -or
         $config.revision -cne '96770f904ca7' -or $config.test_framework -cne '1.1.33' -or
-        $config.fixture_repository -cne 'cwru-non-academic/CSharp_WSS_Integration_Lib' -or $config.expected_cases.Count -ne 10) { throw 'Unexpected Unity CI contract.' }
+        $config.fixture_repository -cne 'cwru-non-academic/CSharp_WSS_Integration_Lib' -or $config.expected_cases.Count -notin @(10,16)) { throw 'Unexpected Unity CI contract.' }
+    if($config.PSObject.Properties['profiles']) {
+        if(@(Compare-Object @('legacy-v1','layered-v1') @($config.profiles.PSObject.Properties.Name) -CaseSensitive).Count){throw 'Both reviewed profile contracts are required.'}
+        $fields=@('fixture_repository','fixture_commit','fixture_sha256','expected_cases','dotnet_expected_cases','multidevice_expected_cases')
+        foreach($name in @('legacy-v1','layered-v1')) {
+            $entry=$config.profiles.$name
+            if(@(Compare-Object $fields @($entry.PSObject.Properties.Name) -CaseSensitive).Count){throw 'Unexpected profile contract fields.'}
+            $hash=if($name -ceq 'legacy-v1'){'f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2'}else{'96812ab33be7ede8840ddb78131a50796fd3f797d9627f958251b3e58796baf8'}
+            $commit=if($name -ceq 'legacy-v1'){'7145e2307f997f703748530bf74311ef94455e98'}else{'fc427c5b8bc6534a7d02f00283830072572aa03a'}
+            $count=if($name -ceq 'legacy-v1'){10}else{16}
+            if($entry.fixture_repository -cne 'cwru-non-academic/CSharp_WSS_Integration_Lib' -or $entry.fixture_sha256 -cne $hash -or $entry.fixture_commit -cne $commit -or $entry.expected_cases.Count -ne $count -or $entry.dotnet_expected_cases.Count -ne $count -or $entry.multidevice_expected_cases.Count -ne ($count-10)){throw 'Unreviewed canonical profile inventory.'}
+        }
+        foreach($field in $fields){
+            if(($config.$field -join "`n") -cne ($config.profiles.'layered-v1'.$field -join "`n")){throw 'Compatibility fields must equal the mandatory modern profile.'}
+        }
+        foreach($field in $fields){$config.$field=$config.profiles.$Profile.$field}
+    } else {throw 'The complete reviewed dual-profile inventory is required.'}
     Assert-UnitySha $config.fixture_commit
     if ($config.fixture_sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Missing fixture digest.' }
     $config
 }
-function Assert-UnityResults([string]$Path, $Config, [switch]$DotNet) {
+function Assert-UnityResults([string]$Path, $Config, [switch]$DotNet, [ValidateSet('single','multi')][string]$Stage='single') {
     # Disable DTD/entity resolution: results may originate from proposed source.
     $settings = [Xml.XmlReaderSettings]::new(); $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit; $settings.XmlResolver = $null
     $reader = [Xml.XmlReader]::Create($Path,$settings)
     try { $xml=[Xml.XmlDocument]::new(); $xml.XmlResolver=$null; $xml.Load($reader) } finally { $reader.Dispose() }
+    $count=$Config.expected_cases.Count
+    if($count -notin @(10,16) -or ($count -eq 10 -and $Stage -ceq 'multi')){throw 'Invalid canonical profile/stage.'}
     $run=$xml.DocumentElement; $cases=@($xml.SelectNodes('//test-case'))
     if ($run.get_Name() -cne 'test-run' -or $run.GetAttribute('result') -cne 'Passed' -or
-        $run.GetAttribute('testcasecount') -cne '10' -or $run.GetAttribute('total') -cne '10' -or
-        $run.GetAttribute('passed') -cne '10' -or $cases.Count -ne 10) { throw 'All ten canonical cases must be discovered, executed and passed.' }
+        $run.GetAttribute('testcasecount') -cne [string]$count -or $run.GetAttribute('total') -cne [string]$count -or
+        $run.GetAttribute('passed') -cne [string]$count -or $cases.Count -ne $count) { throw 'All canonical profile cases must be discovered, executed and passed.' }
     foreach ($attribute in @('failed','skipped','inconclusive')) { if ($run.GetAttribute($attribute) -cne '0') { throw "Nonzero or absent $attribute count." } }
     $expected=if ($DotNet) { @($Config.dotnet_expected_cases) } else { @($Config.expected_cases) }
-    if ($expected.Count -ne 10 -or @(Compare-Object $expected @($cases | ForEach-Object { $_.GetAttribute('name') }) -CaseSensitive).Count -ne 0 -or
+    if ($Stage -ceq 'multi') { $expected=@($expected | Select-Object -First 10)+@($Config.multidevice_expected_cases) }
+    if ($expected.Count -ne $count -or @(Compare-Object $expected @($cases | ForEach-Object { $_.GetAttribute('name') }) -CaseSensitive).Count -ne 0 -or
         @($cases | Where-Object { $_.GetAttribute('result') -cne 'Passed' }).Count -gt 0) { throw 'Missing/duplicate/unexpected/unsuccessful canonical cases.' }
 }
 function Assert-UnitySource([string]$Root,[string]$Sha,[switch]$IgnoreSubmodule) {
@@ -173,4 +192,40 @@ function Get-UnityAllowedWrapperPaths {
 }
 function Assert-UnityDiff([string[]]$Paths,[string[]]$Allowed) {
     if ($Paths.Count -eq 0 -or @($Paths | Where-Object { $_ -cnotin $Allowed }).Count -gt 0) { throw 'Empty or out-of-scope promotion diff.' }
+}
+
+# Require independently enumerated single- and multi-device runtime evidence.
+function Assert-UnityMultiStageEvidence([string]$Root,$Single,$Config) {
+    if ($Single.stage -cne 'single') { throw 'Root evidence must identify the single stage.' }
+    $multiRoot = Join-Path $Root 'multi'
+    foreach ($name in @('evidence.json','results.xml','dotnet.log','projection.json')) {
+        if (!(Test-Path -LiteralPath (Join-Path $multiRoot $name) -PathType Leaf)) { throw "Missing multi-stage evidence: $name" }
+    }
+    $multi = Get-Content (Join-Path $multiRoot 'evidence.json') -Raw | ConvertFrom-Json
+    Assert-UnitySameCandidate $multi.candidate $Single.candidate
+    foreach ($field in @('test_root','test_sha','test_repository','test_selection_id','test_contract_sha256')) {
+        if ($Single.PSObject.Properties[$field] -or $multi.PSObject.Properties[$field]) {
+            if (!$Single.PSObject.Properties[$field] -or !$multi.PSObject.Properties[$field] -or $Single.$field -cne $multi.$field) { throw "Multi-stage selected test binding differs: $field" }
+        }
+    }
+    foreach ($field in @('schema','execution','role','mode','wrapper_sha','gui_sha','fixture_sha','fixture_sha256','sdk','target_framework','test_framework','run_repository','run_id','run_sha','projection_sha256','unity_executed')) {
+        if ($multi.$field -cne $Single.$field) { throw "Multi-stage evidence differs: $field" }
+    }
+    if ($multi.stage -cne 'multi' -or $multi.discovered -ne 16 -or $multi.executed -ne 16 -or $multi.passed -ne 16 -or
+        $multi.failed -ne 0 -or $multi.skipped -ne 0 -or $multi.assertion_expressions -ne 20) { throw 'Incomplete multi-stage runtime evidence.' }
+    foreach ($pair in @(@('results.xml','results_sha256'),@('dotnet.log','log_sha256'))) {
+        if ((Get-FileHash -LiteralPath (Join-Path $multiRoot $pair[0])).Hash.ToLowerInvariant() -cne $multi.($pair[1])) { throw 'Multi-stage content hash mismatch.' }
+    }
+    if ((Get-FileHash -LiteralPath (Join-Path $multiRoot 'projection.json')).Hash -cne (Get-FileHash -LiteralPath (Join-Path $Root 'projection.json')).Hash) { throw 'Multi-stage package projection differs.' }
+    Assert-UnityResults (Join-Path $multiRoot 'results.xml') $Config -DotNet -Stage multi
+    if ($Single.PSObject.Properties['test_selection_id'] -and $Single.test_selection_id) {
+        $baselineRoot=Join-Path $Root 'mandatory-baseline'
+        $baseline=Get-Content -LiteralPath (Join-Path $baselineRoot 'evidence.json') -Raw | ConvertFrom-Json
+        if (!$baseline.PSObject.Properties['test_selection_id'] -or $baseline.test_selection_id -or
+            $baseline.wrapper_sha -cne $Single.wrapper_sha -or $baseline.gui_sha -cne $Single.gui_sha -or
+            $baseline.role -cne $Single.role -or $baseline.mode -cne $Single.mode) { throw 'Selected suite cannot replace the fixed-product mandatory baseline.' }
+        Assert-UnitySameCandidate $baseline.candidate $Single.candidate
+        Assert-UnityResults (Join-Path $baselineRoot 'results.xml') $Config -DotNet
+        Assert-UnityMultiStageEvidence $baselineRoot $baseline $Config
+    }
 }

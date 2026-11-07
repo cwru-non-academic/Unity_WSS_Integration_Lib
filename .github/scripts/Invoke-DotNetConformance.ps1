@@ -14,6 +14,8 @@ param(
     [ValidateRange(30,1800)][int]$TimeoutSeconds=300
 )
 . "$PSScriptRoot/UnityContract.ps1"
+$previousStage = $env:WSS_CONFORMANCE_STAGE
+try {
 # Ordinary and candidate callers must execute both isolated stages by default.
 # Explicit single/multi remain available for focused diagnosis only.
 if ($Stage -ceq 'all') {
@@ -97,3 +99,5 @@ $evidence=[ordered]@{
 $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'evidence.json')
 $projection | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'projection.json')
 Write-Output 'PASS: ordinary .NET through shared production commands; sixteen canonical cases, twenty unchanged assertion expressions; Unity was not executed.'
+
+} finally { $env:WSS_CONFORMANCE_STAGE = $previousStage }

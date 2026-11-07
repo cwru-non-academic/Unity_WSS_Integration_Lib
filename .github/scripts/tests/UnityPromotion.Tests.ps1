@@ -144,3 +144,6 @@ try {
 }
 
 $global:LASTEXITCODE=0 # Expected common recovery rejection fixtures completed.
+
+# Exercise target-policy and executable-tooling separation through real entrypoints.
+& "$PSScriptRoot/UnityPromotionConfig.Tests.ps1"

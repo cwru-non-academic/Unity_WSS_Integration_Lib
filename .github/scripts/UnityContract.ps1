@@ -175,3 +175,24 @@ function Get-UnityAllowedWrapperPaths {
 function Assert-UnityDiff([string[]]$Paths,[string[]]$Allowed) {
     if ($Paths.Count -eq 0 -or @($Paths | Where-Object { $_ -cnotin $Allowed }).Count -gt 0) { throw 'Empty or out-of-scope promotion diff.' }
 }
+
+# Require independently enumerated single- and multi-device runtime evidence.
+function Assert-UnityMultiStageEvidence([string]$Root,$Single,$Config) {
+    if ($Single.stage -cne 'single') { throw 'Root evidence must identify the single stage.' }
+    $multiRoot = Join-Path $Root 'multi'
+    foreach ($name in @('evidence.json','results.xml','dotnet.log','projection.json')) {
+        if (!(Test-Path -LiteralPath (Join-Path $multiRoot $name) -PathType Leaf)) { throw "Missing multi-stage evidence: $name" }
+    }
+    $multi = Get-Content (Join-Path $multiRoot 'evidence.json') -Raw | ConvertFrom-Json
+    Assert-UnitySameCandidate $multi.candidate $Single.candidate
+    foreach ($field in @('schema','execution','role','mode','wrapper_sha','gui_sha','fixture_sha','fixture_sha256','sdk','target_framework','test_framework','run_repository','run_id','run_sha','projection_sha256','unity_executed')) {
+        if ($multi.$field -cne $Single.$field) { throw "Multi-stage evidence differs: $field" }
+    }
+    if ($multi.stage -cne 'multi' -or $multi.discovered -ne 16 -or $multi.executed -ne 16 -or $multi.passed -ne 16 -or
+        $multi.failed -ne 0 -or $multi.skipped -ne 0 -or $multi.assertion_expressions -ne 20) { throw 'Incomplete multi-stage runtime evidence.' }
+    foreach ($pair in @(@('results.xml','results_sha256'),@('dotnet.log','log_sha256'))) {
+        if ((Get-FileHash -LiteralPath (Join-Path $multiRoot $pair[0])).Hash.ToLowerInvariant() -cne $multi.($pair[1])) { throw 'Multi-stage content hash mismatch.' }
+    }
+    if ((Get-FileHash -LiteralPath (Join-Path $multiRoot 'projection.json')).Hash -cne (Get-FileHash -LiteralPath (Join-Path $Root 'projection.json')).Hash) { throw 'Multi-stage package projection differs.' }
+    Assert-UnityResults (Join-Path $multiRoot 'results.xml') $Config -DotNet -Stage multi
+}

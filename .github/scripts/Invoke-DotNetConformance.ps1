@@ -8,12 +8,27 @@ param(
     [string]$GuiSha='',
     [ValidateSet('committed','candidate')][string]$Mode='committed',
     [ValidateSet('wrapper','gui')][string]$Role='wrapper',
-    [ValidateSet('single','multi')][string]$Stage='single',
+    [ValidateSet('all','single','multi')][string]$Stage='all',
     [string]$ArtifactRoot='',
     [string]$CandidatePath='',
     [ValidateRange(30,1800)][int]$TimeoutSeconds=300
 )
 . "$PSScriptRoot/UnityContract.ps1"
+# Ordinary and candidate callers must execute both isolated stages by default.
+# Explicit single/multi remain available for focused diagnosis only.
+if ($Stage -ceq 'all') {
+    $options = @{}
+    foreach ($key in $PSBoundParameters.Keys) { $options[$key] = $PSBoundParameters[$key] }
+    $options.Stage = 'single'
+    & $PSCommandPath @options
+    $options.Stage = 'multi'
+    $options.OutputRoot = Join-Path $OutputRoot 'multi'
+    & $PSCommandPath @options
+    $single = Get-Content (Join-Path $OutputRoot 'evidence.json') -Raw | ConvertFrom-Json
+    Assert-UnityMultiStageEvidence $OutputRoot $single (Read-UnityConfig $ConfigPath)
+    return
+}
+
 $env:WSS_CONFORMANCE_STAGE=$Stage
 $config=Read-UnityConfig $ConfigPath
 if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }

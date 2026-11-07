@@ -102,7 +102,7 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
 }
 function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,$Config) {
     $files=@(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/') })
-    if (@(Compare-Object @('evidence.json','results.xml','dotnet.log','projection.json') $files -CaseSensitive).Count -ne 0) { throw 'Unexpected/incomplete preflight artifact.' }
+    if (@(Compare-Object @('evidence.json','results.xml','dotnet.log','projection.json','multi/evidence.json','multi/results.xml','multi/dotnet.log','multi/projection.json') $files -CaseSensitive).Count -ne 0) { throw 'Unexpected/incomplete preflight artifact.' }
     $e=Get-Content -LiteralPath (Join-Path $Root 'evidence.json') -Raw | ConvertFrom-Json
     Assert-UnitySameCandidate $e.candidate $Candidate
     $expectedRunSha=if ($Role -ceq 'wrapper') { $e.wrapper_sha } else { $e.gui_sha }
@@ -115,6 +115,7 @@ function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$Ru
         if ((Get-FileHash -LiteralPath (Join-Path $Root $pair[0])).Hash.ToLowerInvariant() -cne $e.($pair[1])) { throw 'Evidence content hash mismatch.' }
     }
     Assert-UnityResults (Join-Path $Root 'results.xml') $Config -DotNet
+    Assert-UnityMultiStageEvidence $Root $e $Config
     $projection=Get-Content -LiteralPath (Join-Path $Root 'projection.json') -Raw | ConvertFrom-Json
     Assert-UnitySameCandidate $projection.candidate $Candidate
     if ($projection.schema -cne 'wss-unity-projection/v1' -or (Get-UnityProjectionDigest $projection.files) -cne $e.projection_sha256 -or

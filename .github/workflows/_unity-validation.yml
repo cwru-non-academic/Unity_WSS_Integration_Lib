@@ -161,6 +161,7 @@ jobs:
             $options.CandidatePath = "$env:RUNNER_TEMP/resolved/candidate.json"
           }
           ./wrapper/.github/scripts/Invoke-DotNetConformance.ps1 @options
+          ./wrapper/.github/scripts/tests/Test-LayeredEvidence.ps1 -ResultsRoot $options.OutputRoot
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -172,6 +173,10 @@ jobs:
             ${{ runner.temp }}/conformance-results/results.xml
             ${{ runner.temp }}/conformance-results/dotnet.log
             ${{ runner.temp }}/conformance-results/projection.json
+            ${{ runner.temp }}/conformance-results/multi/evidence.json
+            ${{ runner.temp }}/conformance-results/multi/results.xml
+            ${{ runner.temp }}/conformance-results/multi/dotnet.log
+            ${{ runner.temp }}/conformance-results/multi/projection.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -99,6 +99,23 @@ if(!$IsWindows){
     }
 }
 
-$coreRecheck=$bridge.IndexOf('Assert-UnityEvidenceInventory $CoreToolsRoot $coreInventory')
-$contextRecheck=$bridge.IndexOf("throw 'Frozen Core selection inputs changed.'")
-if($coreRecheck -le $gate -or $contextRecheck -le $coreRecheck -or $emission -le $contextRecheck){throw 'Core bootstrap and frozen input recheck must precede evidence execution.'}
+$coreRecheck=$bridge.IndexOf('Assert-UnityFrozenSelectionState $frozen')
+$shaRecheck=$bridge.IndexOf('Assert-UnitySource $frozen.core_root $frozen.core_sha')
+if($coreRecheck -le $gate -or $shaRecheck -le $coreRecheck -or $emission -le $shaRecheck){throw 'Frozen Core authority recheck must precede evidence execution.'}
+$fakeCore=Join-Path $directory 'fake-core'
+$null=New-Item -ItemType Directory -Path $fakeCore
+$coreFile=Join-Path $fakeCore 'bootstrap.mjs'
+$lockFile=Join-Path $directory 'lock.json'
+$contextFile=Join-Path $directory 'context.json'
+$rootsFile=Join-Path $directory 'roots.json'
+foreach($file in @($coreFile,$lockFile,$contextFile,$rootsFile)){[IO.File]::WriteAllText($file,'original')}
+$state=New-UnityFrozenSelectionState $fakeCore ('b'*40) $lockFile $contextFile $rootsFile
+Assert-UnityFrozenSelectionState $state
+foreach($file in @($coreFile,$lockFile,$contextFile,$rootsFile)){
+    [IO.File]::WriteAllText($file,'tampered')
+    $invoked=$false;$rejected=$false
+    try{Assert-UnityFrozenSelectionState $state;$invoked=$true}catch{$rejected=$true}
+    if(!$rejected -or $invoked){throw 'Mutated Core executable/lock/context/roots reached evidence invocation.'}
+    [IO.File]::WriteAllText($file,'original')
+}
+Write-Output 'Core executable, original lock, context and roots mutation rejected before evidence invocation.'

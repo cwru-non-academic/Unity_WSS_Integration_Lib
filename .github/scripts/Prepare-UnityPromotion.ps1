@@ -6,13 +6,16 @@ param(
     [string]$ApprovalJson='',
     [string]$WrapperMergeSha='',
     [string]$WrapperPr='',
+    [string]$ToolSha='',
     [switch]$ValidateOnly
 )
 . "$PSScriptRoot/UnityPromotion.ps1"
+. "$PSScriptRoot/UnityPromotionConfig.ps1"
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne (Get-WssCiChannelContext).ref) { throw 'Promotion preparation runs only in the trusted dev workflow.' }
 if (Test-Path -LiteralPath $WorkRoot) { throw 'WorkRoot must be new.' }
 New-Item -ItemType Directory -Path $WorkRoot | Out-Null
-$config=Read-UnityConfig (Join-Path $RepositoryRoot '.github/unity-ci.json')
+$binding=Resolve-UnityPromotionConfig $RepositoryRoot $Role $ToolSha
+$config=$binding.config
 if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { throw 'Approved .NET promotion baseline required.' }
 $source=(Invoke-UnityGit $RepositoryRoot @('rev-parse','HEAD')).Trim()
 Assert-UnitySource $RepositoryRoot $source -IgnoreSubmodule
@@ -83,7 +86,7 @@ if ($Role -ceq 'wrapper') {
     $guiPreflightId=[string]$postMerge.id
     Assert-UnityMergedGuiPreflight $approval $WrapperMergeSha $source $guiPreflightId (Join-Path $WorkRoot 'merged-gui-evidence') $config
 }
-$prepared=@{no_op=$false;role=$Role;source_sha=$source;wrapper_merge_sha=$WrapperMergeSha;wrapper_pr=$WrapperPr}
+$prepared=@{tooling_sha=$binding.tooling.sha;tooling_config_sha256=$binding.tooling.config_sha256;no_op=$false;role=$Role;source_sha=$source;wrapper_merge_sha=$WrapperMergeSha;wrapper_pr=$WrapperPr}
 if ($Role -ceq 'gui') { $prepared.gui_preflight_run_id=$guiPreflightId }
 $prepared | ConvertTo-Json | Set-Content (Join-Path $WorkRoot 'prepared.json')
 'no_op=false' >> $env:GITHUB_OUTPUT

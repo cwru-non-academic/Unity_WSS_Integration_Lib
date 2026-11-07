@@ -1,12 +1,15 @@
-param([Parameter(Mandatory)][string]$RepositoryRoot,[Parameter(Mandatory)][string]$WorkRoot)
+param([Parameter(Mandatory)][string]$RepositoryRoot,[Parameter(Mandatory)][string]$WorkRoot,[string]$ToolSha='' )
 . "$PSScriptRoot/UnityPromotion.ps1"
+. "$PSScriptRoot/UnityPromotionConfig.ps1"
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne (Get-WssCiChannelContext).ref -or !$env:UNITY_PUSH_TOKEN) { throw 'Publication requires the trusted dev workflow and delayed scoped token.' }
 $prepared=Get-Content -LiteralPath (Join-Path $WorkRoot 'prepared.json') -Raw | ConvertFrom-Json
 if ($prepared.no_op) { throw 'No-op preparation must not mint a write token or publish.' }
 $role=$prepared.role
 $repo=if ($role -ceq 'wrapper') { $UnityWrapperRepository } elseif ($role -ceq 'gui') { $UnityGuiRepository } else { throw 'Unexpected promotion role.' }
 if ($repo -cne $env:GITHUB_REPOSITORY) { throw 'Wrong publication repository.' }
-$config=Read-UnityConfig (Join-Path $RepositoryRoot '.github/unity-ci.json')
+$binding=Resolve-UnityPromotionConfig $RepositoryRoot $role $ToolSha
+if ($prepared.tooling_sha -cne $binding.tooling.sha -or $prepared.tooling_config_sha256 -cne $binding.tooling.config_sha256) { throw 'Prepared and publication tooling must match exactly.' }
+$config=$binding.config
 if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { throw 'Approved .NET promotion baseline required.' }
 $approval=Read-UnityApproval (Join-Path $WorkRoot 'approval.json')
 Assert-UnityApproval $approval (Join-Path $WorkRoot 'publication-evidence') $config

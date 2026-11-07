@@ -17,7 +17,8 @@ if ($target.StartsWith($wrapper+[IO.Path]::DirectorySeparatorChar,[StringCompari
 $fixturePath=Join-Path $CSharpIntegrationRoot 'tests/Wss.CSharpImplementation.Tests/StimulationControllerConformanceTests.cs'
 . (Join-Path $wrapper '.github/scripts/UnityContract.ps1')
 $fixtureHash=Get-UnityFixtureHash $CSharpIntegrationRoot
-if ($fixtureHash -cne '96812ab33be7ede8840ddb78131a50796fd3f797d9627f958251b3e58796baf8') { throw 'Canonical fixture digest changed.' }
+if ($fixtureHash -cnotin @('f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2','96812ab33be7ede8840ddb78131a50796fd3f797d9627f958251b3e58796baf8')) { throw 'Canonical fixture digest changed.' }
+$assertionCount=if($fixtureHash -ceq 'f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2'){18}else{20}
 $canonical=[IO.File]::ReadAllText($fixturePath)
 $factory='(?s)private static StimulationController CreateController\(string fixtureDirectory\) =>\s*new\(new StimulationOptions\s*\{\s*ConfigPath = fixtureDirectory,\s*Transport = StimulationTransportKind.Conformance,\s*MaxSetupTries = 1,\s*TickIntervalMs = 1\s*\}\);'
 if ([regex]::Matches($canonical,$factory).Count -ne 1) { throw 'Canonical controller factory changed.' }
@@ -26,7 +27,7 @@ if ([regex]::Matches($canonical,$factory).Count -ne 1) { throw 'Canonical contro
 $replacement=if ($BleLifecycle) { 'private static StimulationController CreateController(string fixtureDirectory) => new(fixtureDirectory, true);' } else { 'private static StimulationController CreateController(string fixtureDirectory) => new(fixtureDirectory);' }
 $adapted="using StimulationController = DotNetConformanceAdapter;`n"+[regex]::Replace($canonical,$factory,$replacement)
 $assertions=@([regex]::Matches($canonical,'Assert\.That\(.*?;','Singleline').Value)
-if ($assertions.Count -ne 20 -or ($assertions -join "`n") -cne (@([regex]::Matches($adapted,'Assert\.That\(.*?;','Singleline').Value) -join "`n")) { throw 'Canonical assertion expressions changed.' }
+if ($assertions.Count -ne $assertionCount -or ($assertions -join "`n") -cne (@([regex]::Matches($adapted,'Assert\.That\(.*?;','Singleline').Value) -join "`n")) { throw 'Canonical assertion expressions changed.' }
 New-Item -ItemType Directory -Path $target | Out-Null
 $sources=@(
     (Join-Path $wrapper 'UnityImplementation/Stimulation.Commands.cs'),
@@ -71,5 +72,5 @@ $constant=if ($Role -ceq 'gui') { 'GUI_CONFORMANCE' } else { 'WRAPPER_CONFORMANC
 if ($BleLifecycle) { $constant+=';BLE_LIFECYCLE_CONFORMANCE' }
 [IO.File]::WriteAllText((Join-Path $target 'Wss.DotNet.Conformance.Tests.csproj'),$project.Replace('ROLE_CONSTANT',$constant))
 @{sdk=@{version='9.0.316';rollForward='disable'}} | ConvertTo-Json | Set-Content (Join-Path $target 'global.json')
-@{schema='wss-dotnet-inputs/v1';role=$Role;canonical_fixture_sha256=$fixtureHash;assertion_expressions=20;execution='ordinary .NET; not Unity';files=@($sources | ForEach-Object { @{path=$_;sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()} })} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $target 'conformance-inputs.json')
+@{schema='wss-dotnet-inputs/v1';role=$Role;canonical_fixture_sha256=$fixtureHash;assertion_expressions=$assertionCount;execution='ordinary .NET; not Unity';files=@($sources | ForEach-Object { @{path=$_;sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()} })} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $target 'conformance-inputs.json')
 Write-Output "Prepared $Role .NET host from shared production source at $target"

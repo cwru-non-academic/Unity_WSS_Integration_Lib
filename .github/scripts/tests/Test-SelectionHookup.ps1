@@ -8,7 +8,7 @@ $body=Get-Content $bridge -Raw
 foreach ($required in @('inspect $TargetId $ContextPath $rootsPath','evidence $TargetId $ContextPath $rootsPath','Assert-UnitySource $CoreToolsRoot $lock.source_commit','$env:GITHUB_SHA -cne $ownSha','$env:WSS_TEST_SELECTION_ID')) {
     if (!$body.Contains($required)) { throw "Missing selection boundary: $required" }
 }
-if ($body.IndexOf('inspect $TargetId') -ge $body.IndexOf('& (Join-Path $PSScriptRoot $runner)') -or $body.IndexOf('evidence $TargetId') -le $body.IndexOf('& (Join-Path $PSScriptRoot $runner)')) { throw 'Inspect/suites/evidence order changed.' }
+if ($body.IndexOf('inspect $TargetId') -ge $body.IndexOf('Invoke-CredentialFreeSelectedPowerShell (Join-Path $PSScriptRoot $runner)') -or $body.IndexOf('evidence $TargetId') -le $body.IndexOf('Invoke-CredentialFreeSelectedPowerShell (Join-Path $PSScriptRoot $runner)')) { throw 'Inspect/suites/evidence order changed.' }
 $old=$env:GITHUB_ACTIONS
 try {
     $env:GITHUB_ACTIONS='false';$rejected=$false

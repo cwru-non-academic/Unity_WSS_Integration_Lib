@@ -20,6 +20,14 @@ param(
 . "$PSScriptRoot/UnityContract.ps1"
 . "$PSScriptRoot/UnityTestSource.ps1"
 $tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
+. "$PSScriptRoot/UnityProfiles.ps1"
+$profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $CandidatePath -Selected:$tests.selected
+$config=Read-UnityConfig $ConfigPath
+Assert-UnityProfileContract $profile $config
+$legacy=$profile.profile -ceq 'legacy-v1'
+$caseCount=if($legacy){10}else{16}
+$assertionCount=if($legacy){18}else{20}
+if($legacy -and $Stage -ceq 'multi'){throw 'Legacy profile has no layered multi-device stage.'}
 $previousStage = $env:WSS_CONFORMANCE_STAGE
 try {
 # Ordinary and candidate callers must execute both isolated stages by default.
@@ -29,6 +37,7 @@ if ($Stage -ceq 'all') {
     foreach ($key in $PSBoundParameters.Keys) { $options[$key] = $PSBoundParameters[$key] }
     $options.Stage = 'single'
     & $PSCommandPath @options
+    if($legacy){return}
     $options.Stage = 'multi'
     $options.OutputRoot = Join-Path $OutputRoot 'multi'
     & $PSCommandPath @options
@@ -104,7 +113,7 @@ Assert-UnityProjection $projectionRoot $projection
 Assert-UnitySource $WrapperRoot $WrapperSha
 if ($GuiRoot) { Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule }
 $inputs=Get-Content -LiteralPath (Join-Path $harness 'conformance-inputs.json') -Raw | ConvertFrom-Json
-if ($inputs.assertion_expressions -ne 20 -or $inputs.canonical_fixture_sha256 -cne $config.fixture_sha256) { throw 'Harness provenance mismatch.' }
+if ($inputs.assertion_expressions -ne $assertionCount -or $inputs.canonical_fixture_sha256 -cne $config.fixture_sha256) { throw 'Harness provenance mismatch.' }
 Assert-UnityTestSource $tests
 $evidence=[ordered]@{
     schema='wss-dotnet-evidence/v1'; execution='dotnet'; role=$Role; mode=$Mode; candidate=$candidate
@@ -112,13 +121,13 @@ $evidence=[ordered]@{
     wrapper_sha=$WrapperSha; gui_sha=$GuiSha; fixture_sha=$config.fixture_commit; fixture_sha256=$config.fixture_sha256
     sdk=$sdk; target_framework='net9.0'; test_framework='NUnit 3.14.0'; unity_executed=$false
     run_repository=$env:GITHUB_REPOSITORY; run_id=$env:GITHUB_RUN_ID; run_sha=$env:GITHUB_SHA
-    discovered=16; executed=16; passed=16; failed=0; skipped=0; assertion_expressions=20; stage=$Stage
+    profile=$profile.profile; discovered=$caseCount; executed=$caseCount; passed=$caseCount; failed=0; skipped=0; assertion_expressions=$assertionCount; stage=$Stage
     projection_sha256=$projection.projection_sha256
     results_sha256=(Get-FileHash -LiteralPath $xmlPath).Hash.ToLowerInvariant()
     log_sha256=(Get-FileHash -LiteralPath $logPath).Hash.ToLowerInvariant()
 }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'evidence.json')
 $projection | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'projection.json')
-Write-Output 'PASS: ordinary .NET through shared production commands; sixteen canonical cases, twenty unchanged assertion expressions; Unity was not executed.'
+Write-Output "PASS: $($profile.profile), $caseCount canonical cases, $assertionCount unchanged assertion expressions; Unity was not executed."
 
 } finally { $env:WSS_CONFORMANCE_STAGE = $previousStage }

@@ -26,3 +26,96 @@ try{
     foreach($name in $names){if([Environment]::GetEnvironmentVariable($name) -cne 'dummy-isolation-value'){throw 'Parent credential was altered'}}
     Write-Output 'Credential-free child, isolated variable scope, failure rejection and parent preservation passed.'
 }finally{foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$prior[$name])}}
+
+$evidence=Join-Path $directory 'mandatory'
+$null=New-Item -ItemType Directory -Path $evidence
+[IO.File]::WriteAllText((Join-Path $evidence 'evidence.json'),'trusted')
+$inventory=Get-UnityEvidenceInventory $evidence
+Assert-UnityEvidenceInventory $evidence $inventory
+foreach($mutation in @('modify','add','delete','directory')){
+    $file=Join-Path $evidence 'evidence.json'
+    switch($mutation){
+        modify {[IO.File]::WriteAllText($file,'changed')}
+        add {[IO.File]::WriteAllText((Join-Path $evidence 'extra.json'),'extra')}
+        delete {Remove-Item -LiteralPath $file}
+        directory {$null=New-Item -ItemType Directory -Path (Join-Path $evidence 'extra-dir')}
+    }
+    $rejected=$false
+    try{Assert-UnityEvidenceInventory $evidence $inventory}catch{$rejected=$true}
+    if(!$rejected){throw "Mandatory inventory accepted $mutation"}
+    if($mutation -ceq 'add'){Remove-Item -LiteralPath (Join-Path $evidence 'extra.json')}
+    if($mutation -ceq 'directory'){Remove-Item -LiteralPath (Join-Path $evidence 'extra-dir')}
+    [IO.File]::WriteAllText($file,'trusted')
+}
+$bridge=Get-Content "$PSScriptRoot/../Invoke-SelectedUnityTests.ps1" -Raw
+$helper=Get-Content "$PSScriptRoot/../SelectedProcessIsolation.ps1" -Raw
+$first=$helper.IndexOf('Invoke-CredentialFreeSelectedPowerShell $Runner $baselineOptions')
+$second=$helper.IndexOf('Invoke-CredentialFreeSelectedPowerShell $Runner $Options')
+$recheck=$helper.IndexOf('Assert-UnityEvidenceInventory $BaselineRoot $mandatoryInventory')
+$gate=$bridge.IndexOf('Invoke-UnitySelectedWithMandatoryBaseline')
+$emission=$bridge.IndexOf('& node $bootstrap evidence')
+if($first -lt 0 -or $second -le $first -or $recheck -le $second -or $gate -lt 0 -or $emission -le $gate){throw 'Trusted baseline/selected/recheck/evidence ordering changed.'}
+Write-Output 'Complete baseline inventory mutations rejected; separate-child ordering verified.'
+
+$fakeRunner=Join-Path $directory 'fake-runner.ps1'
+$fakeCode=@(
+'param([string]$OutputRoot,[string]$TestRoot="",[string]$BaselineRoot,[string]$Mode)',
+'if(!$TestRoot){',
+' $null=New-Item -ItemType Directory -Path $OutputRoot',
+' [IO.File]::WriteAllText((Join-Path $OutputRoot "evidence.json"),"trusted-baseline")',
+' if($Mode -ceq "baseline-failure"){exit 41}',
+'}else{',
+' if(!(Test-Path (Join-Path $BaselineRoot "evidence.json"))){throw "Selected code ran before baseline."}',
+' function global:Assert-UnityEvidenceInventory { }',
+' if($Mode -ceq "tamper"){[IO.File]::WriteAllText((Join-Path $BaselineRoot "evidence.json"),"forged")}',
+' [IO.File]::WriteAllText($OutputRoot,"selected-ran")',
+'}'
+)
+$fakeCode | Set-Content -LiteralPath $fakeRunner
+foreach($mode in @('scope-override','tamper','baseline-failure')){
+    $baseline=Join-Path $directory "baseline-$mode"
+    $marker=Join-Path $directory "selected-$mode"
+    $failed=$false
+    try{Invoke-UnitySelectedWithMandatoryBaseline $fakeRunner @{OutputRoot=$marker;TestRoot='untrusted';BaselineRoot=$baseline;Mode=$mode} $baseline -ConformanceOnly}catch{$failed=$true}
+    if($mode -ceq 'scope-override' -and $failed){throw 'Selected scope override affected trusted parent.'}
+    if($mode -cne 'scope-override' -and !$failed){throw "Accepted $mode"}
+    if($mode -ceq 'baseline-failure' -and (Test-Path $marker)){throw 'Selected code ran after failed baseline.'}
+}
+Write-Output 'Selected global override isolated; evidence tampering and failed baseline rejected across real child processes.'
+
+# Ordinal path keys are required even when the host filesystem is case-sensitive.
+$caseInventory=[Collections.Hashtable]::new([StringComparer]::Ordinal)
+$caseInventory['evidence.json']='one';$caseInventory['EVIDENCE.json']='two'
+if($caseInventory.Count -ne 2){throw 'Evidence path identity collapsed case-distinct files.'}
+if(!$IsWindows){
+    $lower=Join-Path $evidence 'evidence.json'
+    $upper=Join-Path $evidence 'EVIDENCE.json'
+    [IO.File]::WriteAllText($upper,'trusted')
+    # Some macOS filesystems are case-insensitive; only test two distinct entries.
+    if(@(Get-ChildItem -LiteralPath $evidence -File).Count -eq 2){
+        $rejected=$false
+        try{Assert-UnityEvidenceInventory $evidence $inventory}catch{$rejected=$true}
+        if(!$rejected){throw 'Case-distinct added evidence escaped inventory.'}
+    }
+}
+
+$coreRecheck=$bridge.IndexOf('Assert-UnityFrozenSelectionState $frozen')
+$shaRecheck=$bridge.IndexOf('Assert-UnitySource $frozen.core_root $frozen.core_sha')
+if($coreRecheck -le $gate -or $shaRecheck -le $coreRecheck -or $emission -le $shaRecheck){throw 'Frozen Core authority recheck must precede evidence execution.'}
+$fakeCore=Join-Path $directory 'fake-core'
+$null=New-Item -ItemType Directory -Path $fakeCore
+$coreFile=Join-Path $fakeCore 'bootstrap.mjs'
+$lockFile=Join-Path $directory 'lock.json'
+$contextFile=Join-Path $directory 'context.json'
+$rootsFile=Join-Path $directory 'roots.json'
+foreach($file in @($coreFile,$lockFile,$contextFile,$rootsFile)){[IO.File]::WriteAllText($file,'original')}
+$state=New-UnityFrozenSelectionState $fakeCore ('b'*40) $lockFile $contextFile $rootsFile
+Assert-UnityFrozenSelectionState $state
+foreach($file in @($coreFile,$lockFile,$contextFile,$rootsFile)){
+    [IO.File]::WriteAllText($file,'tampered')
+    $invoked=$false;$rejected=$false
+    try{Assert-UnityFrozenSelectionState $state;$invoked=$true}catch{$rejected=$true}
+    if(!$rejected -or $invoked){throw 'Mutated Core executable/lock/context/roots reached evidence invocation.'}
+    [IO.File]::WriteAllText($file,'original')
+}
+Write-Output 'Core executable, original lock, context and roots mutation rejected before evidence invocation.'

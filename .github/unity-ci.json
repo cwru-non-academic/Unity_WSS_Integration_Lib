@@ -8,8 +8,8 @@
   "revision": "96770f904ca7",
   "test_framework": "1.1.33",
   "fixture_repository": "cwru-non-academic/CSharp_WSS_Integration_Lib",
-  "fixture_commit": "7145e2307f997f703748530bf74311ef94455e98",
-  "fixture_sha256": "f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2",
+  "fixture_commit": "fc427c5b8bc6534a7d02f00283830072572aa03a",
+  "fixture_sha256": "96812ab33be7ede8840ddb78131a50796fd3f797d9627f958251b3e58796baf8",
   "expected_cases": [
     "AnalogStimulationThroughCSharpImplementationPassesCoreConformance",
     "InitializationThroughCSharpImplementationPassesCoreConformance",
@@ -20,7 +20,13 @@
     "NormalizedScenario(\"normalized.1.0\")",
     "NormalizedScenario(\"normalized.1.2\")",
     "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
-    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming",
+    "StimulationSequence(\"analog.multichannel-isolation\")",
+    "StimulationSequence(\"normalized.multichannel-isolation\")",
+    "StimulationSequence(\"modeled.p.pw.single\")",
+    "StimulationSequence(\"modeled.p.pa.single\")",
+    "StimulationSequence(\"modeled.pd.pw.single\")",
+    "StimulationSequence(\"modeled.pd.pa.single\")"
   ],
   "automated_execution": "dotnet",
   "dotnet_sdk": "9.0.316",
@@ -34,10 +40,24 @@
     "normalized.1.0",
     "normalized.1.2",
     "RuntimeEventEditThroughCSharpImplementationResumesConformantStreaming",
-    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming"
+    "StopStimulationThroughCSharpImplementationDoesNotResumeStreaming",
+    "analog.multichannel-isolation",
+    "normalized.multichannel-isolation",
+    "modeled.p.pw.single",
+    "modeled.p.pa.single",
+    "modeled.pd.pw.single",
+    "modeled.pd.pa.single"
   ],
   "channels": [
     "dev",
     "main"
+  ],
+  "multidevice_expected_cases": [
+    "analog.multidevice-isolation",
+    "normalized.multidevice-isolation",
+    "modeled.p.pw.multi",
+    "modeled.p.pa.multi",
+    "modeled.pd.pw.multi",
+    "modeled.pd.pa.multi"
   ]
 }

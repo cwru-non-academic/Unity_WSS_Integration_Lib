@@ -9,11 +9,18 @@ Nothing in this directory is loaded by GitHub Actions. Existing ordinary/candida
 3. Publish reviewed Unity/GUI bundles and trusted wrapper adapter. GUI must continue using its actual product gitlink; never change it merely to obtain a test runner. If the fixed gitlink predates the adapter, use a separately pinned trusted tooling checkout and verify its identity, or wait for independently authorized product adoption.
 4. Complete hosted validation. Windows Application Control blocked the final local DLL loads; no retry or bypass is authorized. Unity Editor, Linux and native Mac runtime validation remain hosted requirements.
 
-## Wiring
+## Legacy online wiring
 
-Apply the adjacent fragment to existing prerequisites once, after source and readiness checks, for unity-wrapper or unity-gui. Read WSS_CI_CHANNEL from the verified channel, not a PR branch name. Preserve ownSha == GITHUB_SHA. Check out Core at the validated lock for ordinary and candidate runs; the old ordinary job may not currently do that.
+The adjacent fragment and online inspect/evidence bridge description preserve
+implemented API compatibility; they are not a deployable offline job graph.
+Do not apply the unchanged fragment after readiness checks alone. Activation
+requires a separately reviewed current-contract flow with immutable bootstrap
+trust and a separate credential-free hosted executor receiving no source/plan,
+App or publishing credentials, including read tokens.
 
-Upload context.json once as wss-selected-tests-<target-id>-a<run_attempt>. Pass immutable selection_id, test_repository, test_commit and target_id outputs from prerequisites. Every suite downloads the same artifact in the same run and uses a separate selected-tests checkout. Reusable candidate platform workflows need these four additional inputs, forwarded from prerequisites; do not select again per platform.
+The legacy fragment describes prerequisites for unity-wrapper or unity-gui. Read WSS_CI_CHANNEL from the verified channel, not a PR branch name. Preserve ownSha == GITHUB_SHA. Check out Core at the validated lock for ordinary and candidate runs; the old ordinary job may not currently do that.
+
+Follow the reviewed Core tools/release/CAMPAIGN_TEST_SELECTION.md contract: upload the durable context.json only when created=true as wss-ci-test-context-<target-id>, without an attempt suffix, then independently load it before exposing authenticated outputs. Preserve v1/v2 durable recovery. Final evidence uses wss-selected-tests-<target-id>-a<run_attempt>; isolated executor handoff transport is separate and attempt-specific. Pass immutable selection_id, test_repository, test_commit and target_id outputs from prerequisites. Every suite uses the same frozen selection and a separate selected-tests checkout. Reusable candidate platform workflows need these four additional inputs, forwarded from prerequisites; do not select again per platform. This remains an inactive integration prerequisite.
 
 Bridge Invoke-SelectedUnityTests.ps1 calls Core inspect before suites and evidence only after successful mandatory + selected gates. WSS_TEST_SELECTION_ID comes from prerequisite output, never context contents. roots.json binds wrapper, optional GUI, canonical fixture and locked Core tooling. Core rechecks all clean immutable source identities after tests.
 

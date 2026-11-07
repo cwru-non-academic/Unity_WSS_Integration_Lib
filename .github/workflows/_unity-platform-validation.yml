@@ -82,6 +82,18 @@ jobs:
           $c = $env:CANDIDATE_JSON | ConvertFrom-Json
           Assert-UnityProducer $c
           ./wrapper/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Linux'
+        with:
+          python-version: '3.12'
+      # Use the locked Core harness, never executable code from the candidate.
+      # Check the full extracted universal payload before consumer projection.
+      - name: Verify Core universal package rejection fixtures
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          dotnet build workflow-guard/tools/ArtifactBuild/ArtifactBuild.csproj
+          python workflow-guard/tests/Packaging/verify_universal.py "$RUNNER_TEMP/resolved/extracted/WSS-Universal"
       - name: Verify candidate packaging, host transport selection and canonical production commands
         shell: pwsh
         env:

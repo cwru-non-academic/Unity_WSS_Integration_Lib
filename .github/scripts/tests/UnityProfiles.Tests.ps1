@@ -2,6 +2,7 @@ param([Parameter(Mandatory)][string]$MainRoot,[Parameter(Mandatory)][string]$Dev
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/../UnityContract.ps1"
 . "$PSScriptRoot/../UnityProfiles.ps1"
+. "$PSScriptRoot/../UnityHarness.ps1"
 $count=0
 function Reject([scriptblock]$Action,[string]$Name){try{& $Action | Out-Null}catch{$script:count++;return};throw "Unexpected acceptance: $Name"}
 $legacy=[WssProfileMetadata]::Read((Join-Path $MainRoot 'Plugins/WSS_Core_Interface/WSS_Core_Interface.dll'))
@@ -80,4 +81,23 @@ foreach($mutation in @('inventory','missing','unknown','hash','commit','count','
  Reject {Read-UnityConfig $temp 'legacy-v1'} "common config $mutation"
 }
 Reject {Read-UnityConfig $common 'unknown'} 'unknown requested profile'
+Assert-UnityHarnessBuilders $MainRoot 'legacy-v1'
+# The reviewed pre-profile modern reference has the old modern-only builder;
+# current branch supplies the reviewed dual-profile builder independently.
+Assert-UnityHarnessBuilders $currentRoot (Resolve-UnityExecutionProfile $currentRoot committed '' '').profile
+Reject {Assert-UnityHarnessBuilders $MainRoot 'layered-v1'} 'historical builder cannot replace modern builder'
+$count+=2
+$scratch=Join-Path ([IO.Path]::GetTempPath()) ('unity-helper-proof-'+[guid]::NewGuid().ToString('N'))
+$null=New-Item -ItemType Directory -Path (Join-Path $scratch 'Conformance~')
+foreach($name in @('Prepare-Harness.ps1','Prepare-PlatformHarness.ps1')){Copy-Item (Join-Path $currentRoot "Conformance~/$name") (Join-Path $scratch "Conformance~/$name")}
+$branchProfile=(Resolve-UnityExecutionProfile $currentRoot committed '' '').profile
+Assert-UnityHarnessBuilders $scratch $branchProfile
+foreach($name in @('Prepare-Harness.ps1','Prepare-PlatformHarness.ps1')) {
+ $path=Join-Path $scratch "Conformance~/$name"
+ $original=[IO.File]::ReadAllText($path)
+ [IO.File]::WriteAllText($path,$original+"`n# changed helper")
+ Reject {Assert-UnityHarnessBuilders $scratch $branchProfile} "mutated $name"
+ [IO.File]::WriteAllText($path,$original)
+}
+$count++
 "$count profile rejection/classification checks passed."

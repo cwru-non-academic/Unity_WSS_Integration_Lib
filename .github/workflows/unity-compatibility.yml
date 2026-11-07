@@ -28,6 +28,7 @@ jobs:
         shell: pwsh
         run: |
           ./.github/scripts/tests/UnityPromotion.Tests.ps1
+          ./.github/scripts/tests/Test-CandidateReadiness.ps1
           ./.github/scripts/tests/WssReleaseReceipt.Tests.ps1
           ./.github/scripts/tests/MacOSConsumerContract.Tests.ps1
   validate:
@@ -71,7 +72,8 @@ jobs:
         shell: pwsh
         run: |
           . ./wrapper/.github/scripts/UnityContract.ps1
-          $config = Read-UnityConfig ./wrapper/.github/unity-ci.json
+          . ./wrapper/.github/scripts/UnityProfiles.ps1
+          $config = Read-UnityExecutionConfig ./wrapper/.github/unity-ci.json ./wrapper
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@v4
@@ -129,7 +131,8 @@ jobs:
         shell: pwsh
         run: |
           . ./wrapper/.github/scripts/UnityContract.ps1
-          $config = Read-UnityConfig ./wrapper/.github/unity-ci.json
+          . ./wrapper/.github/scripts/UnityProfiles.ps1
+          $config = Read-UnityExecutionConfig ./wrapper/.github/unity-ci.json ./wrapper
           "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($config.dotnet_sdk)" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@v4

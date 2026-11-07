@@ -56,3 +56,29 @@ $gate=$bridge.IndexOf('Invoke-UnitySelectedWithMandatoryBaseline')
 $emission=$bridge.IndexOf('& node $bootstrap evidence')
 if($first -lt 0 -or $second -le $first -or $recheck -le $second -or $gate -lt 0 -or $emission -le $gate){throw 'Trusted baseline/selected/recheck/evidence ordering changed.'}
 Write-Output 'Complete baseline inventory mutations rejected; separate-child ordering verified.'
+
+$fakeRunner=Join-Path $directory 'fake-runner.ps1'
+$fakeCode=@(
+'param([string]$OutputRoot,[string]$TestRoot="",[string]$BaselineRoot,[string]$Mode)',
+'if(!$TestRoot){',
+' $null=New-Item -ItemType Directory -Path $OutputRoot',
+' [IO.File]::WriteAllText((Join-Path $OutputRoot "evidence.json"),"trusted-baseline")',
+' if($Mode -ceq "baseline-failure"){exit 41}',
+'}else{',
+' if(!(Test-Path (Join-Path $BaselineRoot "evidence.json"))){throw "Selected code ran before baseline."}',
+' function global:Assert-UnityEvidenceInventory { }',
+' if($Mode -ceq "tamper"){[IO.File]::WriteAllText((Join-Path $BaselineRoot "evidence.json"),"forged")}',
+' [IO.File]::WriteAllText($OutputRoot,"selected-ran")',
+'}'
+)
+$fakeCode | Set-Content -LiteralPath $fakeRunner
+foreach($mode in @('scope-override','tamper','baseline-failure')){
+    $baseline=Join-Path $directory "baseline-$mode"
+    $marker=Join-Path $directory "selected-$mode"
+    $failed=$false
+    try{Invoke-UnitySelectedWithMandatoryBaseline $fakeRunner @{OutputRoot=$marker;TestRoot='untrusted';BaselineRoot=$baseline;Mode=$mode} $baseline -ConformanceOnly}catch{$failed=$true}
+    if($mode -ceq 'scope-override' -and $failed){throw 'Selected scope override affected trusted parent.'}
+    if($mode -cne 'scope-override' -and !$failed){throw "Accepted $mode"}
+    if($mode -ceq 'baseline-failure' -and (Test-Path $marker)){throw 'Selected code ran after failed baseline.'}
+}
+Write-Output 'Selected global override isolated; evidence tampering and failed baseline rejected across real child processes.'

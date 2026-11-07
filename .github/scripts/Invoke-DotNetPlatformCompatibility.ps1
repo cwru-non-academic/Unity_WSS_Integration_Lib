@@ -81,7 +81,7 @@ if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $negativeResult) -or
 Write-Output 'PASS: facade capability cannot hide missing declared macOS files or accept orphan legacy files.'
 Assert-UnityProjection $projection $record
 Assert-UnitySource $WrapperRoot $WrapperSha
-Assert-UnitySource $FixtureRoot (Read-UnityConfig $ConfigPath).fixture_commit
+Assert-UnitySource $FixtureRoot $tests.contract.fixture_commit
 if ($GuiRoot) { Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule }
 Assert-UnityTestSource $tests
 $evidence=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/evidence.json') -Raw | ConvertFrom-Json

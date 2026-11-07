@@ -1,5 +1,7 @@
 # Inactive until selection-adoption workflow templates and the coordinated Core lock land.
 param(
+    [string]$ToolRoot='',
+    [string]$ToolSha='',
     [Parameter(Mandatory)][ValidateSet('unity-wrapper','unity-gui')][string]$TargetId,
     [Parameter(Mandatory)][string]$ContextPath,
     [Parameter(Mandatory)][string]$CoreToolsRoot,
@@ -20,12 +22,14 @@ param(
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/SelectedProcessIsolation.ps1"
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTooling.ps1"
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:WSS_TEST_SELECTION_ID -cnotmatch '^[a-f0-9]{64}$') { throw 'Require actual GitHub identity and trusted prerequisite selection output.' }
 $role=if ($TargetId -ceq 'unity-gui') { 'gui' } else { 'wrapper' }
 $ownSha=if ($role -ceq 'gui') { $GuiSha } else { $WrapperSha }
 $ownRepository=if ($role -ceq 'gui') { $UnityGuiRepository } else { $UnityWrapperRepository }
 if ($env:GITHUB_SHA -cne $ownSha -or $env:GITHUB_REPOSITORY -cne $ownRepository) { throw 'Product source differs from actual target run.' }
-$lock=Get-Content (Join-Path $WrapperRoot '.github/scripts/wss-ci.lock.json') -Raw | ConvertFrom-Json
+$tooling=Resolve-UnityTooling $ToolRoot $ToolSha $WrapperRoot $WrapperSha $ConfigPath $TestRoot
+$lock=Get-Content (Join-Path $tooling.root '.github/scripts/wss-ci.lock.json') -Raw | ConvertFrom-Json
 if ($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)") { throw 'Invalid immutable Core bootstrap lock.' }
 Assert-UnitySource $CoreToolsRoot $lock.source_commit
 $bootstrap=Join-Path $CoreToolsRoot 'tools/ci/ci-test-selection.mjs'
@@ -45,11 +49,12 @@ $inspection=& node $bootstrap inspect $TargetId $ContextPath $rootsPath
 if ($LASTEXITCODE) { throw 'Frozen selected-test checkout inspection failed.' }
 $binding=$inspection | ConvertFrom-Json
 if ($binding.selection_id -cne $env:WSS_TEST_SELECTION_ID -or $binding.target_id -cne $TargetId) { throw 'Unexpected bootstrap binding.' }
-$options=@{WrapperRoot=$WrapperRoot;WrapperSha=$WrapperSha;GuiRoot=$GuiRoot;GuiSha=$GuiSha;FixtureRoot=$FixtureRoot;ConfigPath=$ConfigPath;OutputRoot=$OutputRoot;Role=$role;Mode=$Mode;ArtifactRoot=$ArtifactRoot;CandidatePath=$CandidatePath;TestRoot=$TestRoot;TestSha=$binding.test_commit;TestRepository=$binding.test_repository;TestSelectionId=$env:WSS_TEST_SELECTION_ID}
+$options=@{ToolRoot=$tooling.root;ToolSha=$tooling.sha;WrapperRoot=$WrapperRoot;WrapperSha=$WrapperSha;GuiRoot=$GuiRoot;GuiSha=$GuiSha;FixtureRoot=$FixtureRoot;ConfigPath=$ConfigPath;OutputRoot=$OutputRoot;Role=$role;Mode=$Mode;ArtifactRoot=$ArtifactRoot;CandidatePath=$CandidatePath;TestRoot=$TestRoot;TestSha=$binding.test_commit;TestRepository=$binding.test_repository;TestSelectionId=$env:WSS_TEST_SELECTION_ID}
 # Never obtain a runner or validator from selected source.
 $runner=if ($ConformanceOnly) { 'Invoke-DotNetConformance.ps1' } else { 'Invoke-DotNetPlatformCompatibility.ps1' }
 Invoke-CredentialFreeSelectedPowerShell (Join-Path $PSScriptRoot $runner) $options
 if (!$?) { throw 'Selected and mandatory suite gates failed.' }
+Assert-UnityTooling $tooling $WrapperRoot $WrapperSha $TestRoot
 # Emission rechecks all source identities only after every trusted runner gate passed.
 & node $bootstrap evidence $TargetId $ContextPath $rootsPath (Join-Path $BindingOutputRoot 'evidence.json')
 if ($LASTEXITCODE) { throw 'Post-test immutable source/evidence validation failed.' }

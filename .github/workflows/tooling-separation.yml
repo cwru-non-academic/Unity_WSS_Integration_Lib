@@ -1,0 +1,181 @@
+name: Separate Unity tooling and products
+on:
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ordinary-gui:
+    name: Actual GUI ${{ matrix.profile }} (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {profile: dev, gui: 582170e2ea9a4dade9c5432ac5623311ac047929, os: windows-2022, label: Windows}
+          - {profile: dev, gui: 582170e2ea9a4dade9c5432ac5623311ac047929, os: ubuntu-latest, label: Ubuntu}
+          - {profile: dev, gui: 582170e2ea9a4dade9c5432ac5623311ac047929, os: macos-15-intel, label: macOS-x64, uname: x86_64}
+          - {profile: dev, gui: 582170e2ea9a4dade9c5432ac5623311ac047929, os: macos-15, label: macOS-arm64, uname: arm64}
+          - {profile: main, gui: 212d224ac56767c3215d444f48ff5cc896f3aba5, os: windows-2022, label: Windows}
+          - {profile: main, gui: 212d224ac56767c3215d444f48ff5cc896f3aba5, os: ubuntu-latest, label: Ubuntu}
+          - {profile: main, gui: 212d224ac56767c3215d444f48ff5cc896f3aba5, os: macos-15-intel, label: macOS-x64, uname: x86_64}
+          - {profile: main, gui: 212d224ac56767c3215d444f48ff5cc896f3aba5, os: macos-15, label: macOS-arm64, uname: arm64}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/GUI_Unity_WSS_Application
+          ref: ${{ matrix.gui }}
+          path: gui
+          persist-credentials: false
+      - name: Resolve the actual unchanged product gitlink
+        id: product
+        shell: pwsh
+        run: |
+          $entry=git -C gui ls-tree HEAD -- Assets/SubModules/WSSInterfacingModule
+          if($LASTEXITCODE -ne 0 -or $entry -cnotmatch '^160000 commit ([0-9a-f]{40})\s+Assets/SubModules/WSSInterfacingModule$'){throw 'Missing exact product gitlink.'}
+          "sha=$($Matches[1])" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: ${{ steps.product.outputs.sha }}
+          path: wrapper
+          lfs: true
+          persist-credentials: false
+      - name: Choose reviewed mandatory fixture by actual payload
+        id: profile
+        shell: pwsh
+        run: |
+          . ./tooling/.github/scripts/UnityContract.ps1
+          . ./tooling/.github/scripts/UnityProfiles.ps1
+          $config=Read-UnityExecutionConfig ./tooling/.github/unity-ci.json ./wrapper
+          "fixture=$($config.fixture_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: ${{ steps.profile.outputs.fixture }}
+          path: fixture
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.316
+      - name: Verify full actual product baseline using separate immutable tools
+        shell: pwsh
+        env:
+          EXPECTED_UNAME: ${{ matrix.uname }}
+          WRAPPER_SHA: ${{ steps.product.outputs.sha }}
+          GUI_SHA: ${{ matrix.gui }}
+        run: |
+          if($env:EXPECTED_UNAME -and (!$IsMacOS -or (& uname -m) -cne $env:EXPECTED_UNAME)){throw 'Native runner architecture mismatch.'}
+          ./tooling/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -ToolRoot "$env:GITHUB_WORKSPACE/tooling" -ToolSha $env:GITHUB_SHA -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -WrapperSha $env:WRAPPER_SHA -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha $env:GUI_SHA -Role gui -ConfigPath "$env:GITHUB_WORKSPACE/tooling/.github/unity-ci.json" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -OutputRoot "$env:RUNNER_TEMP/separate-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: separate-tooling-${{ matrix.profile }}-${{ matrix.label }}
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/separate-results/**/*.json
+            ${{ runner.temp }}/separate-results/**/*.xml
+            ${{ runner.temp }}/separate-results/**/*.log
+  modern-candidate:
+    name: Modern GUI candidate (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-2022, label: Windows}
+          - {os: ubuntu-latest, label: Ubuntu}
+          - {os: macos-15-intel, label: macOS-x64, uname: x86_64}
+          - {os: macos-15, label: macOS-arm64, uname: arm64}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: eb1439afcd35ffc8691abeea7b59a06a6837b41f
+          path: wrapper
+          lfs: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/GUI_Unity_WSS_Application
+          ref: 064de7b37ff8538c401b3eca2101a5d525f13367
+          path: gui
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/CSharp_WSS_Integration_Lib
+          ref: fc427c5b8bc6534a7d02f00283830072572aa03a
+          path: fixture
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.316
+      - uses: actions/create-github-app-token@v2
+        id: read
+        with:
+          app-id: ${{ vars.WSS_GITHUB_APP_ID }}
+          private-key: ${{ secrets.WSS_GITHUB_APP_PRIVATE_KEY }}
+          owner: cwru-non-academic
+          repositories: WSSCore
+          permission-contents: read
+          permission-actions: read
+      - name: Resolve exact reviewed producer package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.read.outputs.token }}
+        run: |
+          . ./tooling/.github/scripts/UnityPromotion.ps1
+          $c=(Get-Content wrapper/.github/unity-candidate.json -Raw | ConvertFrom-Json).candidate
+          Assert-UnityProducer $c
+          ./tooling/.github/scripts/Resolve-WssRelease.ps1 -RunId $c.run_id -ExpectedArtifactId $c.artifact_id -ExpectedCommit $c.commit -ArchiveName $c.archive -ExpectedSha256 $c.sha256 -OutputRoot "$env:RUNNER_TEMP/resolved"
+      - name: Read locked Core packaging guard
+        id: guard
+        shell: pwsh
+        run: |
+          $lock=Get-Content tooling/.github/scripts/wss-ci.lock.json -Raw | ConvertFrom-Json
+          if($lock.source_repository -cne 'cwru-non-academic/WSSCore' -or $lock.source_commit -cnotmatch '^[a-f0-9]{40}$' -or $lock.source_ref -cne "refs/heads/ci/tooling/$($lock.source_commit)"){throw 'Invalid immutable Core guard lock.'}
+          "sha=$($lock.source_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        if: runner.os == 'Linux'
+        with:
+          repository: cwru-non-academic/WSSCore
+          ref: ${{ steps.guard.outputs.sha }}
+          path: core-guard
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Linux'
+        with:
+          python-version: '3.12'
+      - name: Retain universal package rejection fixtures
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          dotnet build core-guard/tools/ArtifactBuild/ArtifactBuild.csproj
+          python core-guard/tests/Packaging/verify_universal.py "$RUNNER_TEMP/resolved/extracted/WSS-Universal"
+      - name: Prove mandatory modern candidate gates through actual product source
+        shell: pwsh
+        env:
+          EXPECTED_UNAME: ${{ matrix.uname }}
+        run: |
+          if($env:EXPECTED_UNAME -and (!$IsMacOS -or (& uname -m) -cne $env:EXPECTED_UNAME)){throw 'Native runner architecture mismatch.'}
+          ./tooling/.github/scripts/Invoke-DotNetPlatformCompatibility.ps1 -ToolRoot "$env:GITHUB_WORKSPACE/tooling" -ToolSha $env:GITHUB_SHA -WrapperRoot "$env:GITHUB_WORKSPACE/wrapper" -WrapperSha eb1439afcd35ffc8691abeea7b59a06a6837b41f -GuiRoot "$env:GITHUB_WORKSPACE/gui" -GuiSha 064de7b37ff8538c401b3eca2101a5d525f13367 -Role gui -ConfigPath "$env:GITHUB_WORKSPACE/tooling/.github/unity-ci.json" -FixtureRoot "$env:GITHUB_WORKSPACE/fixture" -OutputRoot "$env:RUNNER_TEMP/candidate-regression" -Mode candidate -ArtifactRoot "$env:RUNNER_TEMP/resolved/extracted/WSS-Universal" -CandidatePath "$env:RUNNER_TEMP/resolved/candidate.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tooling-candidate-regression-${{ matrix.label }}
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/candidate-regression/**/*.json
+            ${{ runner.temp }}/candidate-regression/**/*.xml
+            ${{ runner.temp }}/candidate-regression/**/*.log

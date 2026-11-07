@@ -52,9 +52,17 @@ if ($binding.selection_id -cne $env:WSS_TEST_SELECTION_ID -or $binding.target_id
 $options=@{ToolRoot=$tooling.root;ToolSha=$tooling.sha;WrapperRoot=$WrapperRoot;WrapperSha=$WrapperSha;GuiRoot=$GuiRoot;GuiSha=$GuiSha;FixtureRoot=$FixtureRoot;ConfigPath=$ConfigPath;OutputRoot=$OutputRoot;Role=$role;Mode=$Mode;ArtifactRoot=$ArtifactRoot;CandidatePath=$CandidatePath;TestRoot=$TestRoot;TestSha=$binding.test_commit;TestRepository=$binding.test_repository;TestSelectionId=$env:WSS_TEST_SELECTION_ID}
 # Never obtain a runner or validator from selected source.
 $runner=if ($ConformanceOnly) { 'Invoke-DotNetConformance.ps1' } else { 'Invoke-DotNetPlatformCompatibility.ps1' }
+# Freeze executable bootstrap and its inputs in parent memory before selected code.
+$coreInventory=Get-UnityEvidenceInventory $CoreToolsRoot
+$contextDigest=(Get-FileHash -LiteralPath $ContextPath -Algorithm SHA256).Hash
+$rootsDigest=(Get-FileHash -LiteralPath $rootsPath -Algorithm SHA256).Hash
 Invoke-UnitySelectedWithMandatoryBaseline (Join-Path $PSScriptRoot $runner) $options (Join-Path $BindingOutputRoot 'mandatory-baseline') -ConformanceOnly:$ConformanceOnly
 if (!$?) { throw 'Selected and mandatory suite gates failed.' }
 Assert-UnityTooling $tooling $WrapperRoot $WrapperSha $TestRoot
+# Never execute a bootstrap or consume frozen inputs changed by selected code.
+Assert-UnityEvidenceInventory $CoreToolsRoot $coreInventory
+if((Get-FileHash -LiteralPath $ContextPath -Algorithm SHA256).Hash -cne $contextDigest -or
+   (Get-FileHash -LiteralPath $rootsPath -Algorithm SHA256).Hash -cne $rootsDigest){throw 'Frozen Core selection inputs changed.'}
 # Emission rechecks all source identities only after every trusted runner gate passed.
 & node $bootstrap evidence $TargetId $ContextPath $rootsPath (Join-Path $BindingOutputRoot 'evidence.json')
 if ($LASTEXITCODE) { throw 'Post-test immutable source/evidence validation failed.' }

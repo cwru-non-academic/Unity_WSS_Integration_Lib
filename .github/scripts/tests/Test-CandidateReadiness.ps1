@@ -18,7 +18,7 @@ $keys=@('MODE','ROLE','WRAPPER_SHA','CLI_SHA','GUI_SHA','GITHUB_SHA','GITHUB_REF
 $previous=@{}; foreach ($key in $keys) { $previous[$key]=[Environment]::GetEnvironmentVariable($key) }
 Push-Location $temp
 try {
-    foreach ($case in @('valid','own-opt-out','wrapper-opt-out','source-mismatch','mutable-wrapper')) {
+    foreach ($case in @('valid','own-execution','own-sdk','own-opt-out','wrapper-opt-out','source-mismatch','mutable-wrapper')) {
         $own=Get-Content (Join-Path $root '.github/unity-ci.json') -Raw | ConvertFrom-Json
         $candidate=$own | ConvertTo-Json -Depth 12 | ConvertFrom-Json
         $own.baseline_ready=$true; $candidate.baseline_ready=$true
@@ -28,6 +28,8 @@ try {
         $env:CLI_SHA=('b'*40); $env:GUI_SHA=('b'*40); $env:GITHUB_SHA=('b'*40)
         $env:GITHUB_REF='refs/heads/dev'; $env:GITHUB_OUTPUT=Join-Path $temp ($case+'.outputs')
         switch ($case) {
+            'own-execution' { $own.automated_execution='unsupported' }
+            'own-sdk' { $own.dotnet_sdk='9.0.999' }
             'own-opt-out' { $own.baseline_ready=$false }
             'wrapper-opt-out' { $candidate.baseline_ready=$false }
             'source-mismatch' { $env:GITHUB_SHA=('c'*40) }

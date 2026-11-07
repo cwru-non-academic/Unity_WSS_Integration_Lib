@@ -49,7 +49,7 @@ jobs:
           $ownConfig = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
           $configPath = if ($env:MODE -ceq 'candidate') { 'candidate-contract/.github/unity-ci.json' } else { '.github/unity-ci.json' }
           $config = Get-Content $configPath -Raw | ConvertFrom-Json
-          if ($config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
+          if ($ownConfig.automated_execution -cne 'dotnet' -or $ownConfig.dotnet_sdk -cne '9.0.316' -or $config.automated_execution -cne 'dotnet' -or $config.dotnet_sdk -cne '9.0.316') { throw 'Unexpected automated execution contract.' }
           if ($env:ROLE -cnotin @('wrapper','gui') -or $env:MODE -cnotin @('candidate','committed')) { throw 'Invalid validation role/mode.' }
           $wrapper = $env:WRAPPER_SHA
           $gui = $env:GUI_SHA

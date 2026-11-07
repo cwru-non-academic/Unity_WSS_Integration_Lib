@@ -82,3 +82,19 @@ foreach($mode in @('scope-override','tamper','baseline-failure')){
     if($mode -ceq 'baseline-failure' -and (Test-Path $marker)){throw 'Selected code ran after failed baseline.'}
 }
 Write-Output 'Selected global override isolated; evidence tampering and failed baseline rejected across real child processes.'
+
+# Ordinal path keys are required even when the host filesystem is case-sensitive.
+$caseInventory=[Collections.Hashtable]::new([StringComparer]::Ordinal)
+$caseInventory['evidence.json']='one';$caseInventory['EVIDENCE.json']='two'
+if($caseInventory.Count -ne 2){throw 'Evidence path identity collapsed case-distinct files.'}
+if(!$IsWindows){
+    $lower=Join-Path $evidence 'evidence.json'
+    $upper=Join-Path $evidence 'EVIDENCE.json'
+    [IO.File]::WriteAllText($upper,'trusted')
+    # Some macOS filesystems are case-insensitive; only test two distinct entries.
+    if(@(Get-ChildItem -LiteralPath $evidence -File).Count -eq 2){
+        $rejected=$false
+        try{Assert-UnityEvidenceInventory $evidence $inventory}catch{$rejected=$true}
+        if(!$rejected){throw 'Case-distinct added evidence escaped inventory.'}
+    }
+}

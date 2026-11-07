@@ -35,7 +35,7 @@ function Get-UnityEvidenceInventory([string]$Root) {
     if (!(Test-Path -LiteralPath $Root -PathType Container)) { throw 'Mandatory evidence root missing.' }
     $rootItem=Get-Item -LiteralPath $Root -Force
     $items=@($rootItem)+@(Get-ChildItem -LiteralPath $Root -Recurse -Force)
-    $inventory=@{}
+    $inventory=[Collections.Hashtable]::new([StringComparer]::Ordinal)
     foreach($item in $items){
         if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Mandatory evidence contains a filesystem link.'}
         $relative=[IO.Path]::GetRelativePath($rootItem.FullName,$item.FullName)

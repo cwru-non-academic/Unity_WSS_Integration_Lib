@@ -26,6 +26,9 @@ if (!$?) { throw 'Platform command conformance failed.' }
 $record=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/projection.json') -Raw | ConvertFrom-Json
 $projection=if ($Mode -ceq 'candidate') { Join-Path $OutputRoot 'conformance/projection' } else { Join-Path $WrapperRoot $UnityPluginPath }
 & "$PSScriptRoot/Test-UnityReceiver.ps1" -ProjectionRoot $projection -Record $record -Scratch (Join-Path $OutputRoot 'inventory-negative')
+if ($tests.selected) {
+    & "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle-mandatory') -Role $Role -GuiRoot $GuiRoot
+}
 & "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle') -Role $Role -GuiRoot $GuiRoot -Tests $tests
 # Keep diagnostics visible through the existing workflow's root/conformance globs.
 # This does not require changing workflow permissions or its required contexts.
@@ -35,11 +38,8 @@ $bleResults=@(Get-ChildItem -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/n
 if ($bleResults.Count -ne 1) { throw 'Missing BLE lifecycle NUnit result.' }
 Copy-Item -LiteralPath $bleResults[0].FullName -Destination (Join-Path $OutputRoot 'conformance/ble-lifecycle-results.xml')
 $probe=Join-Path $OutputRoot 'probe'
-if ($tests.selected) {
-    & (Get-UnitySelectedTestFile $tests 'Prepare-PlatformHarness.ps1') -WrapperRoot $WrapperRoot -Destination $probe -ProjectionRoot $projection
-} else {
-    & (Join-Path $WrapperRoot 'Conformance~/Prepare-PlatformHarness.ps1') -Destination $probe -ProjectionRoot $projection
-}
+# Mandatory native/runtime probe always comes from fixed product source.
+& (Join-Path $WrapperRoot 'Conformance~/Prepare-PlatformHarness.ps1') -Destination $probe -ProjectionRoot $projection
 $publish=Join-Path $OutputRoot 'publish'
 Push-Location $probe
 try {

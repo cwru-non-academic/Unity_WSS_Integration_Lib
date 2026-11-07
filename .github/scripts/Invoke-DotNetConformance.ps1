@@ -34,6 +34,13 @@ if ($Stage -ceq 'all') {
     & $PSCommandPath @options
     $single = Get-Content (Join-Path $OutputRoot 'evidence.json') -Raw | ConvertFrom-Json
     Assert-UnityMultiStageEvidence $OutputRoot $single (Read-UnityConfig $ConfigPath)
+    if ($tests.selected) {
+        # The selected complete suite is additive; fixed canonical baseline is never replaced.
+        foreach ($key in @('TestRoot','TestSha','TestRepository','TestSelectionId')) { $options.Remove($key) }
+        $options.Stage='all'
+        $options.OutputRoot=Join-Path $OutputRoot 'mandatory-baseline'
+        & $PSCommandPath @options
+    }
     return
 }
 

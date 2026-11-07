@@ -67,6 +67,14 @@ Assert-UnityResults $xmlPath $config
 Assert-UnityProjection $projectionRoot $projection
 Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule
 Assert-UnitySource $WrapperRoot $WrapperSha
+if ($tests.selected) {
+    $baseline=@{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -cnotin @('TestRoot','TestSha','TestRepository','TestSelectionId')) { $baseline[$key]=$PSBoundParameters[$key] }
+    }
+    $baseline.OutputRoot=Join-Path $OutputRoot 'mandatory-baseline'
+    & $PSCommandPath @baseline
+}
 Assert-UnityTestSource $tests
 $evidence=[ordered]@{
     schema='wss-unity-evidence/v1'; role=$Role; mode=$Mode; candidate=$candidate

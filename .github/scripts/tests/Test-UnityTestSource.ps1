@@ -53,7 +53,7 @@ Add-Content (Join-Path $root '.git/info/exclude') 'conformance/ignored.txt'
 Set-Content (Join-Path $root 'conformance/ignored.txt') 'unexpected ignored source'
 Reject { Resolve-UnityTestSource @args } 'ignored selected bundle file'
 # Verify builders retain explicit production inputs even when located elsewhere.
-foreach ($name in @('Prepare-Harness.ps1','Prepare-PlatformHarness.ps1')) {
+foreach ($name in @('Prepare-Harness.ps1')) {
     $body=Get-Content (Join-Path $root "conformance/$name") -Raw
     if (!$body.Contains('$wrapper=[IO.Path]::GetFullPath($WrapperRoot)') -or $body.Contains("Join-Path `$PSScriptRoot '..'")) { throw 'Selected builder changes product root.' }
 }

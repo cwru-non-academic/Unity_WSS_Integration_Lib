@@ -45,7 +45,7 @@ function Resolve-UnityTestSource([string]$WrapperRoot,[string]$WrapperSha,[strin
     $result
 }
 function Get-UnitySelectedTestFile($Tests,[string]$Name) {
-    if (!$Tests.selected -or $Name -cnotin @('Prepare-Harness.ps1','Prepare-PlatformHarness.ps1','Prepare-UnityHarness.ps1')) { throw 'Only allowlisted selected test entry points may execute.' }
+    if (!$Tests.selected -or $Name -cnotin @('Prepare-Harness.ps1','Prepare-UnityHarness.ps1')) { throw 'Only allowlisted selected test entry points may execute.' }
     $path=Join-Path $Tests.root "conformance/$Name"
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing selected test entry point: $Name" }
     $path

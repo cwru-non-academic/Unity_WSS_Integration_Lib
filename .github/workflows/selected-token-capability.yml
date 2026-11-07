@@ -1,0 +1,45 @@
+name: Read-only selected token capability probe
+on:
+  push:
+    branches: [codex/selected-token-capability-probe]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: GET public Core metadata and discard artifact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os, urllib.request, urllib.error, urllib.parse
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener=urllib.request.build_opener(NoRedirect)
+          base='https://api.github.com/repos/cwru-non-academic/WSSCore'
+          paths=['/actions/runs/42288988734','/actions/runs/42288988734/jobs','/actions/runs/42288988734/artifacts','/actions/artifacts/13538204103','/actions/artifacts/13538204103/zip']
+          for path in paths:
+              request=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},method='GET')
+              try:
+                  with opener.open(request,timeout=60) as response:
+                      status=response.status
+                      while response.read(1024*1024): pass
+                      print(path+': HTTP '+str(status))
+              except urllib.error.HTTPError as error:
+                  print(path+': HTTP '+str(error.code))
+                  if error.code in (301,302,303,307,308) and path.endswith('/zip'):
+                      location=error.headers.get('Location','')
+                      if urllib.parse.urlsplit(location).scheme!='https':
+                          raise RuntimeError('Artifact redirect was not HTTPS')
+                      # Never forward GitHub authorization to artifact storage.
+                      with urllib.request.urlopen(location,timeout=60) as response:
+                          size=0
+                          while True:
+                              chunk=response.read(1024*1024)
+                              if not chunk: break
+                              size+=len(chunk)
+                          print('artifact download: HTTP '+str(response.status)+'; discarded '+str(size)+' bytes')
+                  # A denial is recorded, never retried or bypassed.

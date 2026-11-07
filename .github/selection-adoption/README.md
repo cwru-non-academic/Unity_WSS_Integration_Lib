@@ -29,3 +29,9 @@ The resolver output paths in the fragment match the existing _unity-validation.y
 - GUI unity-ci.yml and wss-preflight.yml callers, retaining immutable literal wrapper workflow pins.
 
 No new workflow is activated by this commit. The fragment is a review recipe, not a drop-in workflow; the coordinated final patch must bind existing exact resolver paths, token read scope and caller inputs before CI can test it.
+
+## Required security work before selected-suite activation
+
+Selection remains inactive. The current bridge's credential-free process is not sufficient to authorize activation. Run the fixed mandatory baseline in a distinct trusted child before any selected executable harness; snapshot and recheck its complete evidence inventory in the trusted parent after the selected child completes. Selected PowerShell must not share validator/function scope with mandatory execution or post-test acceptance validation.
+
+Authenticate and download producer artifacts in a separate trusted job. A selected executor must receive only verified immutable artifact inputs, never the App private key/token or a runner where those action temp/state secrets were present. Environment stripping alone does not provide this isolation. These prerequisites are independent of ordinary tooling/product separation and must be reviewed before enabling selected policies or workflows.

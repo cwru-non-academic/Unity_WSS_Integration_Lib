@@ -20,7 +20,9 @@ jobs:
           lfs: true
       - name: Verify selected suite credential isolation
         shell: pwsh
-        run: ./.github/scripts/tests/SelectedProcessIsolation.Tests.ps1
+        run: |
+          ./.github/scripts/tests/SelectedProcessIsolation.Tests.ps1
+          ./.github/scripts/tests/UnityTooling.Tests.ps1
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/Unity_WSS_Integration_Lib

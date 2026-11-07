@@ -1,4 +1,6 @@
 param(
+    [string]$ToolRoot='',
+    [string]$ToolSha='',
     [string]$TestRoot='',
     [string]$TestSha='',
     [string]$TestRepository='',
@@ -16,24 +18,26 @@ param(
     [string]$CandidatePath=''
 )
 . "$PSScriptRoot/UnityContract.ps1"
+. "$PSScriptRoot/UnityTooling.ps1"
+$tooling=Resolve-UnityTooling $ToolRoot $ToolSha $WrapperRoot $WrapperSha $ConfigPath $TestRoot
 . "$PSScriptRoot/UnityTestSource.ps1"
 . "$PSScriptRoot/UnityProfiles.ps1"
 . "$PSScriptRoot/UnityHarness.ps1"
 $profile=Resolve-UnityExecutionProfile $WrapperRoot $Mode $ArtifactRoot $CandidatePath -Selected:([bool]($TestRoot -or $TestSha -or $TestRepository -or $TestSelectionId))
 Assert-UnityHarnessBuilders $WrapperRoot $profile.profile
-$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile
+$tests=Resolve-UnityTestSource -WrapperRoot $WrapperRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId -Profile $profile.profile -ToolRoot $tooling.root
 if (Test-Path -LiteralPath $OutputRoot) { throw 'Platform output root must be new.' }
 # This preserves all canonical cases/assertions, exact-source and projection gates
 # while proving that the same production commands run on this host platform.
-& "$PSScriptRoot/Invoke-DotNetConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'conformance') -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -Mode $Mode -ArtifactRoot $ArtifactRoot -CandidatePath $CandidatePath -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
+& "$PSScriptRoot/Invoke-DotNetConformance.ps1" -ToolRoot $tooling.root -ToolSha $tooling.sha -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -WrapperSha $WrapperSha -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'conformance') -Role $Role -GuiRoot $GuiRoot -GuiSha $GuiSha -Mode $Mode -ArtifactRoot $ArtifactRoot -CandidatePath $CandidatePath -TestRoot $TestRoot -TestSha $TestSha -TestRepository $TestRepository -TestSelectionId $TestSelectionId
 if (!$?) { throw 'Platform command conformance failed.' }
 $record=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/projection.json') -Raw | ConvertFrom-Json
 $projection=if ($Mode -ceq 'candidate') { Join-Path $OutputRoot 'conformance/projection' } else { Join-Path $WrapperRoot $UnityPluginPath }
 & "$PSScriptRoot/Test-UnityReceiver.ps1" -ProjectionRoot $projection -Record $record -Scratch (Join-Path $OutputRoot 'inventory-negative')
 if ($tests.selected) {
-    & "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle-mandatory') -Role $Role -GuiRoot $GuiRoot
+    & "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -ToolRoot $tooling.root -ToolSha $tooling.sha -ConfigPath $ConfigPath -WrapperSha $WrapperSha -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle-mandatory') -Role $Role -GuiRoot $GuiRoot
 }
-& "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle') -Role $Role -GuiRoot $GuiRoot -Tests $tests
+& "$PSScriptRoot/Invoke-BleLifecycleConformance.ps1" -ToolRoot $tooling.root -ToolSha $tooling.sha -ConfigPath $ConfigPath -WrapperSha $WrapperSha -WrapperRoot $WrapperRoot -FixtureRoot $FixtureRoot -ProjectionRoot $projection -OutputRoot (Join-Path $OutputRoot 'ble-lifecycle') -Role $Role -GuiRoot $GuiRoot -Tests $tests
 # Keep diagnostics visible through the existing workflow's root/conformance globs.
 # This does not require changing workflow permissions or its required contexts.
 Copy-Item -LiteralPath (Join-Path $OutputRoot 'ble-lifecycle/regression.json') -Destination (Join-Path $OutputRoot 'ble-lifecycle-regression.json')
@@ -88,6 +92,7 @@ Assert-UnitySource $WrapperRoot $WrapperSha
 Assert-UnitySource $FixtureRoot $tests.contract.fixture_commit
 if ($GuiRoot) { Assert-UnitySource $GuiRoot $GuiSha -IgnoreSubmodule }
 Assert-UnityTestSource $tests
+Assert-UnityTooling $tooling $WrapperRoot $WrapperSha $TestRoot
 $evidence=Get-Content -LiteralPath (Join-Path $OutputRoot 'conformance/evidence.json') -Raw | ConvertFrom-Json
 $evidence.schema='wss-dotnet-platform-evidence/v1'
 $evidence | Add-Member -NotePropertyName platform_result_sha256 -NotePropertyValue ((Get-FileHash -LiteralPath $result).Hash.ToLowerInvariant())

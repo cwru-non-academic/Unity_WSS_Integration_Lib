@@ -62,3 +62,19 @@ function Invoke-UnitySelectedWithMandatoryBaseline([string]$Runner,[hashtable]$O
     Invoke-CredentialFreeSelectedPowerShell $Runner $Options
     Assert-UnityEvidenceInventory $BaselineRoot $mandatoryInventory
 }
+
+function New-UnityFrozenSelectionState([string]$CoreRoot,[string]$CoreSha,[string]$LockPath,[string]$ContextPath,[string]$RootsPath) {
+    $files=[Collections.Hashtable]::new([StringComparer]::Ordinal)
+    foreach($path in @($LockPath,$ContextPath,$RootsPath)){
+        $files[[IO.Path]::GetFullPath($path)]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    }
+    [pscustomobject]@{core_root=$CoreRoot;core_sha=$CoreSha;core_inventory=(Get-UnityEvidenceInventory $CoreRoot);files=$files}
+}
+function Assert-UnityFrozenSelectionState($State) {
+    Assert-UnityEvidenceInventory $State.core_root $State.core_inventory
+    foreach($path in $State.files.Keys){
+        $item=Get-Item -LiteralPath $path -Force
+        if($item.Attributes -band [IO.FileAttributes]::ReparsePoint -or
+           (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $State.files[$path]){throw 'Frozen Core authority input changed.'}
+    }
+}

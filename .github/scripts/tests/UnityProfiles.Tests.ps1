@@ -56,15 +56,19 @@ Assert-UnityProfileContract $legacyProfile $legacyConfig
 Assert-UnityProfileContract $modernProfile $modernConfig
 Reject {Assert-UnityProfileContract $legacyProfile $modernConfig} 'legacy cannot use modern fixture'
 Reject {Assert-UnityProfileContract $modernProfile $legacyConfig} 'modern cannot downgrade baseline'
-$common=Join-Path $DevRoot '.github/unity-ci.json'
+$currentRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+$common=Join-Path $currentRoot '.github/unity-ci.json'
 $fromLegacy=Read-UnityExecutionConfig $common $MainRoot
 $fromModern=Read-UnityExecutionConfig $common $DevRoot
 if($fromLegacy.expected_cases.Count -ne 10 -or $fromModern.expected_cases.Count -ne 16 -or $fromLegacy.fixture_commit -ceq $fromModern.fixture_commit){throw 'Common config did not follow actual payload profiles.'}
-$count+=2
+$current=Read-UnityExecutionConfig $common $currentRoot
+if($current.expected_cases.Count -notin @(10,16)){throw 'Current product profile is unsupported.'}
+$count+=3
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('unity-profile-config-'+[guid]::NewGuid().ToString('N')+'.json')
-foreach($mutation in @('missing','unknown','hash','commit','count','compatibility')) {
+foreach($mutation in @('inventory','missing','unknown','hash','commit','count','compatibility')) {
  $broken=Get-Content $common -Raw | ConvertFrom-Json
  switch($mutation) {
+  'inventory' {$broken.PSObject.Properties.Remove('profiles')}
   'missing' {$broken.profiles.PSObject.Properties.Remove('legacy-v1')}
   'unknown' {$broken.profiles | Add-Member -NotePropertyName future -NotePropertyValue $broken.profiles.'legacy-v1'}
   'hash' {$broken.profiles.'legacy-v1'.fixture_sha256='a'*64}
@@ -77,4 +81,3 @@ foreach($mutation in @('missing','unknown','hash','commit','count','compatibilit
 }
 Reject {Read-UnityConfig $common 'unknown'} 'unknown requested profile'
 "$count profile rejection/classification checks passed."
-

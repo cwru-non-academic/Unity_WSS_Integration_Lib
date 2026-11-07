@@ -28,9 +28,16 @@ jobs:
           path: .legacy-product
           lfs: true
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cwru-non-academic/Unity_WSS_Integration_Lib
+          ref: b7c9d0374fec7cfecfa783f76a899ab0cff077c4
+          path: .modern-product
+          lfs: true
+          persist-credentials: false
       - name: Verify immutable payload profile boundaries without executing payloads
         shell: pwsh
-        run: ./.github/scripts/tests/UnityProfiles.Tests.ps1 -MainRoot "$env:GITHUB_WORKSPACE/.legacy-product" -DevRoot "$env:GITHUB_WORKSPACE"
+        run: ./.github/scripts/tests/UnityProfiles.Tests.ps1 -MainRoot "$env:GITHUB_WORKSPACE/.legacy-product" -DevRoot "$env:GITHUB_WORKSPACE/.modern-product"
       - uses: actions/checkout@v4
         with:
           repository: cwru-non-academic/CSharp_WSS_Integration_Lib

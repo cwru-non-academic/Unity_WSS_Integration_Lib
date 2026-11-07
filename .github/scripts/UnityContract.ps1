@@ -158,7 +158,7 @@ function Read-UnityConfig([string]$Path,[ValidateSet('legacy-v1','layered-v1')][
             if(($config.$field -join "`n") -cne ($config.profiles.'layered-v1'.$field -join "`n")){throw 'Compatibility fields must equal the mandatory modern profile.'}
         }
         foreach($field in $fields){$config.$field=$config.profiles.$Profile.$field}
-    } elseif($Profile -ceq 'legacy-v1' -and $config.fixture_sha256 -cne 'f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2'){throw 'Missing reviewed legacy profile.'}
+    } else {throw 'The complete reviewed dual-profile inventory is required.'}
     Assert-UnitySha $config.fixture_commit
     if ($config.fixture_sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Missing fixture digest.' }
     $config

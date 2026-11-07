@@ -46,6 +46,12 @@ Reject { Read-UnityTestContract $path } 'product readiness injection'
 Set-Content $path $original -NoNewline
 Add-Content (Join-Path $root 'conformance/Stimulation.DotNet.cs') '// dirty'
 Reject { Resolve-UnityTestSource @args } 'dirty selected test source'
+& git -C $root add .
+& git -C $root -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm dirty-fixture
+$args.TestSha=(& git -C $root rev-parse HEAD).Trim()
+Add-Content (Join-Path $root '.git/info/exclude') 'conformance/ignored.txt'
+Set-Content (Join-Path $root 'conformance/ignored.txt') 'unexpected ignored source'
+Reject { Resolve-UnityTestSource @args } 'ignored selected bundle file'
 # Verify builders retain explicit production inputs even when located elsewhere.
 foreach ($name in @('Prepare-Harness.ps1','Prepare-PlatformHarness.ps1')) {
     $body=Get-Content (Join-Path $root "conformance/$name") -Raw

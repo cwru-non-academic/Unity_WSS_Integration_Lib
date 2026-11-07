@@ -10,6 +10,7 @@ Copy-Item (Join-Path $source '.github/unity-ci.json') (Join-Path $root '.github/
 & git -C $root add .
 & git -C $root -c user.name=Fixture -c user.email=fixture@example.invalid commit --quiet -m 'Synthetic tooling identity only'
 if($LASTEXITCODE){throw 'Cannot prepare metadata fixture.'}
+$root=[IO.Path]::GetFullPath((git -C $root rev-parse --show-toplevel).Trim())
 $sha=(git -C $root rev-parse HEAD).Trim();$config=Join-Path $root '.github/unity-ci.json'
 . (Join-Path $root '.github/scripts/UnityContract.ps1')
 . (Join-Path $root '.github/scripts/UnityTooling.ps1')

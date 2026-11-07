@@ -83,6 +83,9 @@ jobs:
             ${{ runner.temp }}/separate-results/**/*.xml
             ${{ runner.temp }}/separate-results/**/*.log
   modern-candidate:
+    env:
+      # This regression authenticates the reviewed dev producer, never a main promotion.
+      WSS_CI_CHANNEL: dev
     name: Modern GUI candidate (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20

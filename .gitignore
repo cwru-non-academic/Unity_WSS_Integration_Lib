@@ -3,3 +3,5 @@
 /Plugins/WSS_Core_Interface/*.dll.meta
 /Plugins/WSS_Core_Interface/*.pdb.meta
 /Plugins/WSS_Core_Interface/*.xml.meta
+/Tests~/**/bin/
+/Tests~/**/obj/

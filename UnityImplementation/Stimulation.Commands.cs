@@ -187,11 +187,18 @@ public partial class Stimulation
     /// <summary>Saves model-layer parameters JSON to disk.</summary>
     public void SaveParamsJson() => WSS.SaveParamsJson();
 
-    /// <summary>Loads model-layer parameters JSON from default location.</summary>
-    public void LoadParamsJson() => WSS.LoadParamsJson();
+    /// <summary>Reloads all JSON files from their startup-default paths.</summary>
+    public void LoadParamsJson() => ReloadParameters(null);
 
-    /// <summary>Loads model-layer parameters JSON from a specified path.</summary>
-    public void LoadParamsJson(string pathOrDir) => WSS.LoadParamsJson(pathOrDir);
+    /// <summary>Reloads a directory profile or one calibration file with startup-default Core/model files.</summary>
+    public void LoadParamsJson(string pathOrDir)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrDir)) throw new ArgumentException("Invalid configuration path.", nameof(pathOrDir));
+        ReloadParameters(pathOrDir);
+    }
+
+    /// <summary>Stages the active Core file and reinitializes through the host lifecycle.</summary>
+    public void LoadCoreConfigFile() => resetRadio();
 
     /// <summary>Sets a parameter by dotted key (e.g., "stim.ch.1.amp").</summary>
     public void AddOrUpdateStimParam(string key, float value) => WSS.AddOrUpdateStimParam(key, value);

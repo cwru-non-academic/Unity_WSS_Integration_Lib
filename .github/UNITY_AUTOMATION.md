@@ -21,16 +21,17 @@ actual application's `WssConformanceController.cs` forwarding methods, with its
 .NET lifetime host. That diagnostic entry point is also used by the manual Editor
 harness; production UI managers call `Stimulation` directly and are not exercised.
 
-`Conformance~/Prepare-Harness.ps1` reads the pinned canonical C# fixture from
-`CSharp_WSS_Integration_Lib` commit `7145e2307f997f703748530bf74311ef94455e98`,
-Git-blob SHA256 `f6aeced83d35255532b6685d9c870307f856aad140da133695a77e9de6104ee2`.
-Git controls checkout line endings; the digest identifies the immutable blob on
-all hosts, and the fixture must have no index or worktree changes.
-Only its controller factory and type alias change. Its ten cases, exact shared
-values, finite waits, evaluator calls, Assert.Multiple blocks and eighteen
-Assert.That expressions remain unchanged. Eighteen counts source expressions;
+`Conformance~/Prepare-Harness.ps1` reads the reviewed C# fixture selected for the
+verified payload profile. [unity-ci.json](unity-ci.json) records the immutable
+fixture commits, hashes and exact case inventories for both profiles. Git controls
+checkout line endings; the digest identifies the immutable blob on all hosts,
+and the fixture must have no index or worktree changes. Only its controller
+factory and type alias change. The reviewed legacy profile retains ten cases and
+eighteen assertion expressions. Modern validation requires both sixteen-case
+single-device and sixteen-case multi-device suites, with twenty unchanged
+assertion expressions per stage. Shared values, finite waits, evaluator calls
+and assertions are preserved; no independent expected-value suite is maintained.
 NUnit's runtime assertion count includes repeated setup/parameterized evaluations.
-No independent scenario or expected-value suite is maintained here.
 
 The generated project uses SDK9.0.316, net9.0, NUnit3.14.0 and the verified released
 Core/JSON dependencies. It compiles the shared wrapper source, not the C# CLI
@@ -50,24 +51,29 @@ and source checkouts; Unity ignores the wrapper's `Conformance~` tooling folder.
   and production transport support boundary on each host. Candidate preflight
   also requires successful platform jobs for all three labels.
 
-Committed wrapper validation needs only its exact wrapper source and the pinned
-canonical fixture. GUI validation derives the exact wrapper SHA from its mode160000
-gitlink. These public read-only checkouts use the existing workflow token; normal
+Committed wrapper validation binds its exact wrapper source, verified payload
+profile and pinned canonical fixture. GUI validation derives the exact production
+wrapper SHA from its mode160000 gitlink and independently derives trusted tooling
+from the literal reusable-workflow SHA in its checked-out caller workflow. These
+public read-only checkouts use the existing workflow token; normal
 CI requires no GitHub App secret, Unity license or persistent local runner.
 
 `Invoke-DotNetConformance.ps1` requires clean exact source SHAs, the pinned fixture
-hash and the complete eighteen-file projection/hash/importer contract (including
-the .NET-only OS Serial runtime tree). It prepares a
-fresh disposable host, runs bounded actual dotnet test, and validates real NUnit
-XML: all ten exact case names discovered/executed/passed, zero skips/failures.
+hash and the complete projection/hash/importer contract for the verified payload
+(including the .NET-only OS Serial runtime tree). The explicitly reviewed legacy
+committed projection remains supported; new candidates require the strict modern
+projection. It prepares a fresh disposable host, runs bounded actual dotnet test,
+and validates real NUnit XML against the exact profile case inventory, with zero
+skips/failures. Modern validation requires both canonical stages and paired evidence.
 Diagnostics retain the test output and source-input manifest. Successful runs retain
 `dotnet-conformance-evidence`; candidate runs retain `unity-preflight-evidence`
 (the legacy artifact name denotes these repositories, not Editor execution).
 
 Automated evidence is **wss-dotnet-evidence/v1** with `execution: dotnet`, exact SDK,
-`unity_executed: false`, source/fixture/producer tuple, projection digest, eighteen
-unchanged assertion expressions, XML/log hashes and ten real passes. Promotion
-validators accept only that explicit runtime and exact successful acceptance job.
+`unity_executed: false`, source/fixture/producer tuple, projection digest,
+profile-specific unchanged assertion expressions, XML/log hashes and exact real
+passes for every required stage. Promotion validators accept only that explicit
+runtime and exact successful acceptance job.
 They never relabel a local Editor result as hosted .NET evidence or vice versa.
 
 Candidate mode retains the exact producer run/artifact/archive/commit/hash resolver,

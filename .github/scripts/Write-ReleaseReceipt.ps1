@@ -80,12 +80,10 @@ $expectedSource=if ($TargetId -ceq 'unity-wrapper') { $approval.wrapper.source_s
 if (@($commit.parents).Count -ne 1 -or $commit.parents[0].sha -cne $expectedSource) { throw 'Dependency PR did not originate at the exact preflight source.' }
 $config=Read-UnityConfig (Join-Path $ValidatorRoot '.github/unity-ci.json')
 if (!$config.baseline_ready -or $config.automated_execution -cne 'dotnet') { throw 'Approved .NET receiver baseline required.' }
-Assert-UnityApproval $approval (Join-Path $work 'paired-preflights') $config
+$preflights=[Collections.Generic.List[object]]::new()
+Assert-UnityApproval $approval (Join-Path $work 'paired-preflights') $config -ReceiptSnapshots $preflights
 $parents=@{}
-$preflights=@(
-    @{repository=$wrapper;run_id=$approval.wrapper.preflight_run_id;source_sha=$approval.wrapper.source_sha;workflow='.github/workflows/wss-preflight.yml'},
-    @{repository=$gui;run_id=$approval.gui.preflight_run_id;source_sha=$approval.gui.source_sha;workflow='.github/workflows/wss-preflight.yml'}
-)
+
 if ($TargetId -ceq 'unity-wrapper') {
     $IntegrationRoot=$AcceptedRoot
     $wrapperSha=$acceptedSha
@@ -101,11 +99,10 @@ if ($TargetId -ceq 'unity-wrapper') {
     $proof=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($matches[0].Groups[1].Value)) | ConvertFrom-Json
     if ($proof.gui_sha -cne $approval.gui.source_sha -or $proof.wrapper_sha -cne $wrapperSha -or
         (Get-UnityGuiPreflightMarker $wrapperSha $proof.gui_sha ([string]$proof.preflight_run_id)) -cne $matches[0].Value.TrimEnd("`r")) { throw 'Merged GUI preflight identity/marker mismatch.' }
-    Assert-UnityMergedGuiPreflight $approval $wrapperSha $proof.gui_sha ([string]$proof.preflight_run_id) (Join-Path $work 'merged-gui-preflight') $config
-    $preflights+=@{repository=$gui;run_id=[string]$proof.preflight_run_id;source_sha=$proof.gui_sha;workflow='.github/workflows/wss-preflight.yml'}
+    Assert-UnityMergedGuiPreflight $approval $wrapperSha $proof.gui_sha ([string]$proof.preflight_run_id) (Join-Path $work 'merged-gui-preflight') $config -ReceiptSnapshots $preflights
     $parents['unity-wrapper']=$wrapperSha
 }
 Assert-UnityMergedWrapper $wrapperSha ([string]$wrapperPr.number) $approval
 Assert-UnityDiff @($files.filename) $(if ($TargetId -ceq 'unity-wrapper') { Get-UnityAllowedWrapperPaths } else { @($UnityGitlink) })
 
-ConvertTo-Json -InputObject @($preflights) -Depth 8 | Set-Content -LiteralPath $OutputPath
+ConvertTo-Json -InputObject $preflights.ToArray() -Depth 12 | Set-Content -LiteralPath $OutputPath

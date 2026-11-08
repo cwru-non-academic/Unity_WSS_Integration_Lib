@@ -1,3 +1,4 @@
+param([string]$ReceiptCommonRoot=(Join-Path $PSScriptRoot '../wss-ci'))
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/../WssReleaseReceipt.ps1"
@@ -105,3 +106,8 @@ $global:LASTEXITCODE=0
 
 # Validate the adapter-only common invocation boundary without native execution.
 & "$PSScriptRoot/NativeReceiptAdapter.Tests.ps1"
+
+& "$PSScriptRoot/ReceiptSnapshots.Tests.ps1"
+
+# Compose real native checks with the real shared proof transport; only GitHub is faked.
+& "$PSScriptRoot/ReceiptBridgeComposition.Tests.ps1" -CommonRoot $ReceiptCommonRoot

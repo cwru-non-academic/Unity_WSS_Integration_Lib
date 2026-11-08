@@ -2,14 +2,9 @@ param(
     [Parameter(Mandatory)][ValidateSet('unity-wrapper','unity-gui')][string] $TargetId,
     [Parameter(Mandatory)][ValidatePattern('^[1-9][0-9]*$')][string] $ProducerRunId,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string] $PlanId,
-    [string] $ToolsRoot = '.tools',
-    [string] $ValidatorRoot = '.validation-tools',
-    [string] $AcceptedRoot = '.accepted',
-    [string] $IntegrationRoot = '.integration',
-    [string] $OutputRoot = 'receipt-output',
-    [string] $ContextPath = '',
-    [string] $WorkRoot = '',
-    [string] $OutputPath = ''
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $ContextPath,
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $WorkRoot,
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $OutputPath
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -49,18 +44,8 @@ function MergedPr([string] $Repository,[string] $Sha) {
 }
 
 
-# One shared Node engine owns receipt orchestration; this script is a rich-proof adapter.
-if (!$ContextPath) {
-    $env:TARGET_ID=$TargetId; $env:PRODUCER_RUN_ID=$ProducerRunId; $env:PLAN_ID=$PlanId
-    $config=@{sourceRoot=[IO.Path]::GetFullPath($AcceptedRoot);toolsRoot=[IO.Path]::GetFullPath($ToolsRoot);validatorRoot=[IO.Path]::GetFullPath($ValidatorRoot);integrationRoot=[IO.Path]::GetFullPath($(if ($TargetId.EndsWith('-wrapper')) {$AcceptedRoot}else{$IntegrationRoot}));outputRoot=[IO.Path]::GetFullPath($OutputRoot)}
-    $configPath=Join-Path $env:RUNNER_TEMP ('receipt-config-'+[guid]::NewGuid().ToString('N')+'.json')
-    $config | ConvertTo-Json | Set-Content -LiteralPath $configPath
-    try {
-        & node (Join-Path $ToolsRoot '.github/scripts/wss-ci/receipt.mjs') $configPath
-        if ($LASTEXITCODE -ne 0) { throw 'Shared read-only receipt verification failed.' }
-    } finally { Remove-Item -LiteralPath $configPath }
-    return
-}
+# The admitted common engine invokes this native-proof adapter exactly once.
+# Root identities and generic policy are admitted before this boundary.
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or $env:GITHUB_REF -cne (Get-WssCiChannelContext).ref) { throw 'Adapter is restricted to actual dev receipt execution.' }
 $ctx=Get-Content -LiteralPath $ContextPath -Raw | ConvertFrom-Json
 if($ctx.plan.channel -cne (Get-WssCiChannel) -or $ctx.target.branch -cne (Get-WssCiChannel)){throw 'Receipt adapter context differs from explicit channel.'}
@@ -76,7 +61,7 @@ foreach ($path in $target.trusted_paths) {
     if ((Invoke-ReceiptGit $AcceptedRoot -Arguments @('rev-parse',"HEAD:$path")) -cne $plan.target_snapshots.$TargetId.trusted.$path) { throw "Accepted receiver tooling differs: $path" }
 }
 foreach ($path in @('.github/scripts','.github/workflows/release-receipt.yml')) {
-    if ((Invoke-ReceiptGit $ToolsRoot -Arguments @('rev-parse',"HEAD:$path")) -cne $plan.target_snapshots.$TargetId.trusted.$path) { throw "Trusted main receipt tooling differs: $path" }
+    if ((Invoke-ReceiptGit $ToolsRoot -Arguments @('rev-parse',"HEAD:$path")) -cne $plan.target_snapshots.$TargetId.trusted.$path) { throw "Admitted receipt tooling differs: $path" }
 }
 if ((Invoke-ReceiptGit $ValidatorRoot -Arguments @('rev-parse','HEAD:.github/scripts')) -cne $plan.target_snapshots.'unity-wrapper'.trusted.'.github/scripts') { throw 'Unity validators differ from frozen tooling.' }
 if ((Invoke-ReceiptGit $ValidatorRoot -Arguments @('rev-parse','HEAD:.github/unity-ci.json')) -cne $plan.target_snapshots.'unity-wrapper'.trusted.'.github/unity-ci.json') { throw 'Unity execution configuration differs from frozen tooling.' }

@@ -102,3 +102,6 @@ try {
     Reject {Assert-WssReceiptPr (Pr) $repo $sha}
 } finally {$env:WSS_CI_CHANNEL=$savedChannel}
 $global:LASTEXITCODE=0
+
+# Validate the adapter-only common invocation boundary without native execution.
+& "$PSScriptRoot/NativeReceiptAdapter.Tests.ps1"

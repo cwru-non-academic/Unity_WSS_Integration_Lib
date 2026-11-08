@@ -1,5 +1,6 @@
 . "$PSScriptRoot/UnityContract.ps1"
 . "$PSScriptRoot/wss-ci/Preflight.ps1"
+. "$PSScriptRoot/wss-ci/Evidence.ps1"
 . "$PSScriptRoot/MacOSConsumerContract.ps1"
 
 function Wait-UnityRun([string]$Repository,[string]$RunId,[string]$Sha,[string]$Workflow,[string]$Event,[int]$TimeoutSeconds=2400) {
@@ -65,9 +66,16 @@ function Read-UnityApprovalMarker([string]$Body,[string]$Destination) {
     if ((Get-UnityApprovalMarker $approval) -cne $matches[0].Value.TrimEnd("`r")) { throw 'Noncanonical approval marker.' }
     $approval
 }
-function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,[string]$Root,$Config) {
+function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,[string]$Root,$Config,[ref]$ReceiptSnapshot) {
     $run=Wait-UnityRun $Repository $RunId $SourceSha 'wss-preflight.yml' 'workflow_dispatch'
+    $receiptMode=$null -ne $ReceiptSnapshot
+    if ($receiptMode) {
+        $proofHandle=Start-WssCiPreflightProof -Repository $Repository -RunId $RunId -SourceSha $SourceSha -Root "$Root-proof" -ExpectedAttempt $run.run_attempt
+        $run=$proofHandle.Run
+        $pages=@([pscustomobject]@{jobs=@($proofHandle.Jobs)})
+    } else {
     $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$Repository/actions/runs/$RunId/attempts/$($run.run_attempt)/jobs?per_page=100") | ConvertFrom-Json
+    }
     $requiredName=if ($Role -ceq 'wrapper') { 'Preflight behavioral tests' } else { 'GUI general conformance' }
     $required=@($pages | ForEach-Object { $_.jobs } | Where-Object { $_.name -ceq $requiredName })
     if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw 'Required candidate acceptance job missing/skipped/failed.' }
@@ -79,7 +87,11 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
     foreach ($arch in @(@('x64','X64'),@('arm64','Arm64'))) {
         $macRoot="$Root-macos-$($arch[0])"
         if (Test-Path -LiteralPath $macRoot) { throw 'Mac evidence destination must be new.' }
+        if ($receiptMode) {
+            $null=Read-WssCiPreflightArtifact -Proof $proofHandle -Name "unity-preflight-platform-$Role-macOS-$($arch[0])" -Destination $macRoot
+        } else {
         $null=Invoke-UnityGh -Arguments @('run','download',$RunId,'--repo',$Repository,'--name',"unity-preflight-platform-$Role-macOS-$($arch[0])",'--dir',$macRoot)
+        }
         $null=Assert-MacOSConsumerProbe (Join-Path $macRoot 'platform-result.json') $arch[1] -RequireBackend -Repository $Repository -RunId $RunId -Attempt ([string]$run.run_attempt) -SourceSha $SourceSha
         $proof=Get-Content -LiteralPath (Join-Path $macRoot 'platform-evidence.json') -Raw | ConvertFrom-Json
         Assert-UnitySameCandidate $proof.candidate $Candidate
@@ -92,12 +104,17 @@ function Get-UnityEvidence([string]$Repository,[string]$RunId,[string]$SourceSha
         $macProofs+=$proof
     }
     if (Test-Path -LiteralPath $Root) { throw 'Evidence download destination must be new.' }
+    if ($receiptMode) {
+        $null=Read-WssCiPreflightArtifact -Proof $proofHandle -Name 'unity-preflight-evidence' -Destination $Root
+    } else {
     $null=Invoke-UnityGh -Arguments @('run','download',$RunId,'--repo',$Repository,'--name','unity-preflight-evidence','--dir',$Root)
+    }
     $e=Assert-UnityEvidenceFiles $Root $Repository $RunId $SourceSha $Role $Candidate $Config
     foreach ($proof in $macProofs) {
         if ($proof.wrapper_sha -cne $e.wrapper_sha -or $proof.gui_sha -cne $e.gui_sha -or $proof.projection_sha256 -cne $e.projection_sha256 -or
             $proof.fixture_sha -cne $e.fixture_sha -or $proof.fixture_sha256 -cne $e.fixture_sha256) { throw 'Mac architectures did not test the same approved sources/projection/fixture.' }
     }
+    if ($receiptMode) { $ReceiptSnapshot.Value=Complete-WssCiPreflightProof -Proof $proofHandle }
     $e
 }
 function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$RunId,[string]$SourceSha,[string]$Role,$Candidate,$Config) {
@@ -122,23 +139,31 @@ function Assert-UnityEvidenceFiles([string]$Root,[string]$Repository,[string]$Ru
         $projection.projection_sha256 -cne $e.projection_sha256) { throw 'Projection/evidence mismatch.' }
     $e
 }
-function Assert-UnityApproval($Approval,[string]$EvidenceRoot,$Config) {
+function Assert-UnityApproval($Approval,[string]$EvidenceRoot,$Config,[Collections.Generic.List[object]]$ReceiptSnapshots) {
     Assert-UnityProducer $Approval.candidate
     foreach ($role in @('wrapper','gui')) {
         $repo=if ($role -ceq 'wrapper') { $UnityWrapperRepository } else { $UnityGuiRepository }
-        $e=Get-UnityEvidence $repo $Approval.$role.preflight_run_id $Approval.$role.source_sha $role $Approval.candidate (Join-Path $EvidenceRoot $role) $Config
+        $snapshot=$null
+        $receiptArguments=@{}
+        if ($null -ne $ReceiptSnapshots) { $receiptArguments.ReceiptSnapshot=[ref]$snapshot }
+        $e=Get-UnityEvidence $repo $Approval.$role.preflight_run_id $Approval.$role.source_sha $role $Approval.candidate (Join-Path $EvidenceRoot $role) $Config @receiptArguments
         if ($e.wrapper_sha -cne $Approval.wrapper.source_sha -or $e.gui_sha -cne $Approval.gui.source_sha -or
             $e.projection_sha256 -cne $Approval.projection_sha256 -or $e.fixture_sha -cne $Approval.fixture.commit -or
             $e.fixture_sha256 -cne $Approval.fixture.sha256) { throw 'Preflights did not test the same source/candidate tuple.' }
+        if ($null -ne $ReceiptSnapshots) { $ReceiptSnapshots.Add($snapshot) }
     }
 }
-function Assert-UnityMergedGuiPreflight($Approval,[string]$WrapperSha,[string]$GuiSha,[string]$RunId,[string]$Root,$Config) {
+function Assert-UnityMergedGuiPreflight($Approval,[string]$WrapperSha,[string]$GuiSha,[string]$RunId,[string]$Root,$Config,[Collections.Generic.List[object]]$ReceiptSnapshots) {
     Assert-UnitySha $WrapperSha
     Assert-UnitySha $GuiSha
     if ($RunId -cnotmatch '^[1-9][0-9]*$') { throw 'Exact merged-wrapper GUI preflight ID required.' }
-    $e=Get-UnityEvidence $UnityGuiRepository $RunId $GuiSha 'gui' $Approval.candidate $Root $Config
+    $snapshot=$null
+    $receiptArguments=@{}
+    if ($null -ne $ReceiptSnapshots) { $receiptArguments.ReceiptSnapshot=[ref]$snapshot }
+    $e=Get-UnityEvidence $UnityGuiRepository $RunId $GuiSha 'gui' $Approval.candidate $Root $Config @receiptArguments
     if ($e.wrapper_sha -cne $WrapperSha -or $e.gui_sha -cne $GuiSha -or $e.projection_sha256 -cne $Approval.projection_sha256 -or
         $e.fixture_sha -cne $Approval.fixture.commit -or $e.fixture_sha256 -cne $Approval.fixture.sha256) { throw 'GUI preflight did not test the exact accepted merged wrapper and current GUI source.' }
+    if ($null -ne $ReceiptSnapshots) { $ReceiptSnapshots.Add($snapshot) }
 }
 function Get-UnityGuiPreflightMarker([string]$WrapperSha,[string]$GuiSha,[string]$RunId) {
     Assert-UnitySha $WrapperSha

@@ -610,12 +610,12 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     /// <inheritdoc cref="IStimParamsCore.SaveParamsJson"/>
     public void SaveParamsJson() => WSS.SaveParamsJson();
 
-    /// <summary>Loads params JSON from default location.</summary>
+    /// <summary>Reloads all JSON files from their startup-default paths.</summary>
     /// <inheritdoc cref="IStimParamsCore.LoadParamsJson()"/>
     public void LoadParamsJson() => ReloadParameters(null);
 
-    /// <summary>Loads params JSON from a given file or directory.</summary>
-    /// <param name="pathOrDir">File path or directory with default name.</param>
+    /// <summary>Reloads a directory profile or one calibration file with startup-default Core/model files.</summary>
+    /// <param name="pathOrDir">Directory profile or calibration JSON file path.</param>
     /// <inheritdoc cref="IStimParamsCore.LoadParamsJson(string)"/>
     public void LoadParamsJson(string pathOrDir)
     {
@@ -624,7 +624,7 @@ public class StimulationParams : MonoBehaviour, ISerializationCallbackReceiver
     }
 
     /// <summary>
-    /// Sets a parameter by dotted key. Examples: "stim.ch.0.amp", "stim.ch.1.minPW".
+    /// Sets a parameter by dotted key. Examples: "stim.ch.1.defaultPA", "stim.ch.1.minPW".
     /// </summary>
     /// <inheritdoc cref="IStimParamsCore.AddOrUpdateStimParam(string,float)"/>
     public void AddOrUpdateStimParam(string key, float value) => WSS.AddOrUpdateStimParam(key, value);

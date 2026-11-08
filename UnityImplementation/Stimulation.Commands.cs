@@ -200,7 +200,7 @@ public partial class Stimulation
     /// <summary>Stages the active Core file and reinitializes through the host lifecycle.</summary>
     public void LoadCoreConfigFile() => resetRadio();
 
-    /// <summary>Sets a parameter by dotted key (e.g., "stim.ch.1.amp").</summary>
+    /// <summary>Sets a parameter by dotted key (e.g., "stim.ch.1.defaultPA").</summary>
     public void AddOrUpdateStimParam(string key, float value) => WSS.AddOrUpdateStimParam(key, value);
 
     /// <summary>Gets a parameter by dotted key.</summary>

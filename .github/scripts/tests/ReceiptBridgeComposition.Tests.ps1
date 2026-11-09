@@ -17,7 +17,7 @@ function Write-Json($Path,$Value){[IO.File]::WriteAllText($Path,($Value|ConvertT
 function Invoke-UnityGh([string[]]$Arguments){
  $key=ConvertTo-Json -InputObject $Arguments -Compress
  $matches=@($script:routes|Where-Object {(ConvertTo-Json -InputObject $_.args -Compress) -ceq $key})
- if($matches.Count -ne 1 -or !$matches[0].ContainsKey('json')){throw "Unexpected native GitHub fixture request: $key"}
+ if($matches.Count -ne 1 -or !$matches[0].ContainsKey('json')){$script:unexpectedCalls++;throw "Unexpected native GitHub fixture request: $key"}
  ConvertTo-Json -InputObject $matches[0].json -Depth 30
 }
 function Add-Archive($Repository,$RunId,$SourceSha,$Name,$Directory){
@@ -62,6 +62,7 @@ try{
  $script:wrongZip=Join-Path $root 'wrong.zip';[IO.File]::WriteAllText($script:wrongZip,'wrong ZIP bytes')
  $passed=0;$rejected=0
  foreach($case in @('valid','invalid-native-count','wrong-zip','wrong-mac-attempt')){
+  $script:unexpectedCalls=0
   $script:case=$case;$script:routes=[Collections.Generic.List[object]]::new();$script:artifactId=1000
   $env:WSS_TEST_GH_RESPONSES=Join-Path $root "$case-routes.json"
   $producer=@{id=10;run_attempt=3;repository=@{full_name=$candidate.repository};head_repository=@{full_name=$candidate.repository};head_branch='dev';head_sha=$candidate.commit;path='.github/workflows/artifacts.yml';event='push';status='completed';conclusion='success'}
@@ -81,15 +82,51 @@ try{
   }
   Write-Json $env:WSS_TEST_GH_RESPONSES @{routes=$script:routes.ToArray();calls_file=(Join-Path $root "$case-calls.jsonl")}
   $list=[Collections.Generic.List[object]]::new();$failure=$null
+  $output=[Collections.Generic.List[object]]::new();$stderrFile=Join-Path $root "$case-stderr.txt"
+  $callsFile=Join-Path $root "$case-calls.jsonl"
+  if(Test-Path -LiteralPath $callsFile){throw 'Transport call log must be new.'}
   try{
-   $output=@(Assert-UnityApproval $approval (Join-Path $root "$case-proof") $config -ReceiptSnapshots $list)
-   $output+=@(Assert-UnityMergedGuiPreflight $approval $mergedSha $guiSha '13' (Join-Path $root "$case-merged-proof") $config -ReceiptSnapshots $list)
+   Assert-UnityApproval $approval (Join-Path $root "$case-proof") $config -ReceiptSnapshots $list 2>$stderrFile|ForEach-Object {$output.Add($_)}
+   Assert-UnityMergedGuiPreflight $approval $mergedSha $guiSha '13' (Join-Path $root "$case-merged-proof") $config -ReceiptSnapshots $list 2>>$stderrFile|ForEach-Object {$output.Add($_)}
   }catch{$failure=$_}
+  # Check transport attempts independently of the expected rejection catch. The
+  # shared preload records every request before matching, including forbidden ones.
+  if($script:unexpectedCalls){throw "Unexpected native transport operation: $case"}
+  if(!(Test-Path -LiteralPath $callsFile)){throw "Missing transport call evidence: $case"}
+  $calls=@(Get-Content -LiteralPath $callsFile|ForEach-Object {ConvertFrom-Json -InputObject $_ -NoEnumerate})
+  foreach($call in $calls){
+   $key=ConvertTo-Json -InputObject $call -Compress
+   if(@($script:routes|Where-Object {(ConvertTo-Json -InputObject $_.args -Compress) -ceq $key}).Count -ne 1){throw "Unexpected Node transport operation: $key"}
+  }
+  $zipCalls=@($calls|Where-Object {$_[-1] -cmatch '/artifacts/[0-9]+/zip$'}|ForEach-Object {($_[-1] -split '/')[-2]})
+  $logCalls=@($calls|Where-Object {$_[-1] -cmatch '/jobs/[0-9]+/logs$'})
+  $diagnostics=if(Test-Path -LiteralPath $stderrFile){[IO.File]::ReadAllText($stderrFile)}else{''}
+  $expectedZips=switch -CaseSensitive ($case){
+   'valid' {'1001|1001|1002|1002|1003|1003|1004|1004|1005|1005|1006|1006|1007|1007|1008|1008|1009|1009'}
+   'invalid-native-count' {'1001|1002|1003'}
+   default {'1002'}
+  }
+  if((($zipCalls|Sort-Object) -join '|') -cne $expectedZips -or $logCalls.Count){throw "Rich receipt transport rejection phase changed: $case (ZIPs=$($zipCalls -join '|'); logs=$($logCalls.Count); error=$failure)"}
   if($case -ceq 'valid'){
+   if($diagnostics){throw "Positive receipt emitted unexpected diagnostics: $diagnostics"}
    if($failure){throw $failure}
    if($output.Count -or $list.Count -ne 3 -or $list[2].run_id -cne '13' -or @($list|Where-Object {$_.attempt -ne 3 -or $_.artifacts.Count -ne 3}).Count){throw 'Real bridge lost paired/actual-wrapper rich snapshots.'}
    $passed++
-  }else{if(!$failure){throw "Real rich bridge accepted $case"};$rejected++}
+  }else{
+   $expected=switch -CaseSensitive ($case){
+    'invalid-native-count' {'Invalid runtime/source/fixture evidence.'}
+    'wrong-zip' {'Authenticated native proof transport failed.'}
+    'wrong-mac-attempt' {'Evidence identity/value mismatch: attempt'}
+   }
+   $nodeError=if($case -ceq 'wrong-zip'){'Artifact ZIP digest mismatch'}else{''}
+   if($null -eq $failure -or $list.Count -or $output.Count){throw "Real bridge accepted descriptor/output for $case"}
+   if($failure.Exception.Message -cne $expected){throw $failure}
+   if($nodeError){
+    $errors=@($diagnostics -split '\r?\n'|Where-Object {$_ -cmatch '^Error: '})
+    if($errors.Count -ne 1 -or $errors[0] -cne "Error: $nodeError"){throw "Wrong underlying Node rejection for ${case}: $diagnostics"}
+   }elseif($diagnostics){throw "Unexpected native rejection diagnostics for ${case}: $diagnostics"}
+   $rejected++
+  }
  }
  "Unity real receipt bridge composition passed ($passed paired+actual-wrapper positive, $rejected rich semantic/ZIP/attempt negatives; unchanged native validators, real Node capture/extraction; only GitHub transport stubbed)."
 }finally{

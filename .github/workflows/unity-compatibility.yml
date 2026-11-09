@@ -8,8 +8,10 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: unity-wrapper-${{ github.ref }}
-  cancel-in-progress: true
+  # Only stale PR checks supersede one another. Preserve every committed run.
+  # run_id also prevents pending replacement between same-source dispatches.
+  group: unity-wrapper-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}-${{ github.event_name == 'pull_request' && 'latest' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   promotion-contracts:
     env:

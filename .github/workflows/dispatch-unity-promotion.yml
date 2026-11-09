@@ -49,8 +49,27 @@ jobs:
       - name: Require candidate-promotion baseline approval
         shell: pwsh
         run: |
-          $config = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
-          if (!$config.baseline_ready) { throw 'Candidate-promotion baseline approval remains pending.' }
+          # WSS diagnostic envelope v1: observational only; absent completion means unknown.
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          try { . ./.github/scripts/wss-ci/PhaseDiagnostics.ps1 } catch { }
+          try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-baseline' -Status 'started' -Boundary -ErrorCode 'none' } catch { }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+          try {
+              $config = Get-Content .github/unity-ci.json -Raw | ConvertFrom-Json
+              if (!$config.baseline_ready) { throw 'Candidate-promotion baseline approval remains pending.' }
+          } catch {
+              $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-baseline' -Status 'failed' -Boundary -ErrorCode 'terminating-error' } catch { }
+              if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+              throw
+          }
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          if ($null -ne $wssDiagnosticExit -and $wssDiagnosticExit -ne 0) {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-baseline' -Status 'failed' -Boundary -ErrorCode 'native-nonzero' } catch { }
+          } else {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-baseline' -Status 'completed' -Boundary -ErrorCode 'none' } catch { }
+          }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
       - uses: actions/create-github-app-token@v2
         id: read
         with:
@@ -93,7 +112,27 @@ jobs:
           PRODUCER_RUN_ID: ${{ inputs.producer_run_id }}
           BARRIER_RUN_ID: ${{ inputs.barrier_run_id }}
           BARRIER_ATTEMPT: ${{ inputs.barrier_attempt }}
-        run: ./.github/scripts/Prepare-StagedApplicationFanout.ps1 -Receiver unity -RecordPath .github/unity-candidate.json -WorkRoot "$env:RUNNER_TEMP/gui-stage"
+        run: |
+          # WSS diagnostic envelope v1: observational only; absent completion means unknown.
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          try { . ./.github/scripts/wss-ci/PhaseDiagnostics.ps1 } catch { }
+          try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'resolve-stage' -Status 'started' -Boundary -ErrorCode 'none' } catch { }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+          try {
+              ./.github/scripts/Prepare-StagedApplicationFanout.ps1 -Receiver unity -RecordPath .github/unity-candidate.json -WorkRoot "$env:RUNNER_TEMP/gui-stage"
+          } catch {
+              $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'resolve-stage' -Status 'failed' -Boundary -ErrorCode 'terminating-error' } catch { }
+              if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+              throw
+          }
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          if ($null -ne $wssDiagnosticExit -and $wssDiagnosticExit -ne 0) {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'resolve-stage' -Status 'failed' -Boundary -ErrorCode 'native-nonzero' } catch { }
+          } else {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'resolve-stage' -Status 'completed' -Boundary -ErrorCode 'none' } catch { }
+          }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
       - name: Validate merged dependency-only PR, provenance and normal CI
         if: steps.stage.outputs.dispatch_allowed == 'true'
         id: validate
@@ -101,7 +140,27 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.read.outputs.token }}
           FANOUT_EVENT: ${{ steps.stage.outputs.event_path }}
-        run: ./.github/scripts/Dispatch-UnityGui.ps1 -EventPath $env:FANOUT_EVENT -WorkRoot "$env:RUNNER_TEMP/unity-dispatch" -ValidateOnly
+        run: |
+          # WSS diagnostic envelope v1: observational only; absent completion means unknown.
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          try { . ./.github/scripts/wss-ci/PhaseDiagnostics.ps1 } catch { }
+          try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-family' -Status 'started' -Boundary -ErrorCode 'none' } catch { }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+          try {
+              ./.github/scripts/Dispatch-UnityGui.ps1 -EventPath $env:FANOUT_EVENT -WorkRoot "$env:RUNNER_TEMP/unity-dispatch" -ValidateOnly
+          } catch {
+              $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-family' -Status 'failed' -Boundary -ErrorCode 'terminating-error' } catch { }
+              if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+              throw
+          }
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          if ($null -ne $wssDiagnosticExit -and $wssDiagnosticExit -ne 0) {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-family' -Status 'failed' -Boundary -ErrorCode 'native-nonzero' } catch { }
+          } else {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'validate-family' -Status 'completed' -Boundary -ErrorCode 'none' } catch { }
+          }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
       - name: Record dispatch intent before application write credentials
         if: steps.validate.outputs.dispatch_needed == 'true'
         uses: actions/upload-artifact@v4
@@ -119,7 +178,27 @@ jobs:
           BARRIER_RUN_ID: ${{ inputs.barrier_run_id }}
           BARRIER_ATTEMPT: ${{ inputs.barrier_attempt }}
           EXPECTED_MERGE_SHA: ${{ steps.stage.outputs.merge_sha }}
-        run: ./.github/scripts/Prepare-StagedApplicationFanout.ps1 -Receiver unity -RecordPath .github/unity-candidate.json -WorkRoot "$env:RUNNER_TEMP/gui-stage-recheck" -ExpectedMergeSha $env:EXPECTED_MERGE_SHA
+        run: |
+          # WSS diagnostic envelope v1: observational only; absent completion means unknown.
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          try { . ./.github/scripts/wss-ci/PhaseDiagnostics.ps1 } catch { }
+          try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'recheck-barrier' -Status 'started' -Boundary -ErrorCode 'none' } catch { }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+          try {
+              ./.github/scripts/Prepare-StagedApplicationFanout.ps1 -Receiver unity -RecordPath .github/unity-candidate.json -WorkRoot "$env:RUNNER_TEMP/gui-stage-recheck" -ExpectedMergeSha $env:EXPECTED_MERGE_SHA
+          } catch {
+              $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'recheck-barrier' -Status 'failed' -Boundary -ErrorCode 'terminating-error' } catch { }
+              if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
+              throw
+          }
+          $wssDiagnosticExit = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+          if ($null -ne $wssDiagnosticExit -and $wssDiagnosticExit -ne 0) {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'recheck-barrier' -Status 'failed' -Boundary -ErrorCode 'native-nonzero' } catch { }
+          } else {
+              try { Write-WssCiPhaseDiagnostic -Family 'unity' -Role 'gui' -Operation 'recheck-barrier' -Status 'completed' -Boundary -ErrorCode 'none' } catch { }
+          }
+          if ($null -ne $wssDiagnosticExit) { $global:LASTEXITCODE = $wssDiagnosticExit }
       - name: Mint GUI Actions token after validation
         if: steps.validate.outputs.dispatch_needed == 'true'
         uses: actions/create-github-app-token@v2

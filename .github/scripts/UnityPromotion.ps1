@@ -253,17 +253,11 @@ function Assert-UnityGuiDispatchIntent([string]$WrapperSha,[switch]$RequireCurre
 }
 
 function Send-UnityGuiDispatch([string]$RequestPath,[string]$ReadToken,[string]$WriteToken) {
-    if (!$ReadToken -or !$WriteToken) { throw 'Separate read and scoped application-write tokens required.' }
-    $request=Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json
-    if ($request.ref -cne (Get-WssCiChannel)) { throw 'GUI dispatch must target dev.' }
-    $approval=$request.inputs.approval_json | ConvertFrom-Json
-    $original=$env:GH_TOKEN
-    try {
-        $env:GH_TOKEN=$ReadToken
-        Assert-UnityFanoutSources $request.inputs.wrapper_sha $approval.gui.source_sha
-        if (Get-UnityGuiDispatchReuse $approval $request.inputs.wrapper_sha) { return }
-        Assert-UnityGuiDispatchIntent $request.inputs.wrapper_sha -RequireCurrent
-        if((Get-WssCiChannel) -ceq 'main'){
+    . "$PSScriptRoot/wss-ci/DispatchProof.ps1"
+    $request=Get-Content -LiteralPath $RequestPath -Raw|ConvertFrom-Json
+    $approval=$request.inputs.approval_json|ConvertFrom-Json
+    $sources=@{};$sources[$UnityWrapperRepository]=$request.inputs.wrapper_sha;$sources[$UnityGuiRepository]=$approval.gui.source_sha
+    $authorizeMain={param($request,$approval)
             $source=(& git -C $env:GITHUB_WORKSPACE rev-parse HEAD).Trim()
             if($LASTEXITCODE -ne 0 -or $env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or
                $env:GITHUB_REPOSITORY -cne $UnityWrapperRepository -or $env:GITHUB_REF -cne 'refs/heads/main' -or
@@ -271,12 +265,8 @@ function Send-UnityGuiDispatch([string]$RequestPath,[string]$ReadToken,[string]$
                $env:GITHUB_SHA -cne $request.inputs.wrapper_sha -or $env:GITHUB_WORKFLOW_SHA -cne $env:GITHUB_SHA -or $source -cne $env:GITHUB_SHA){throw 'Main fanout must execute the exact accepted integration workflow source.'}
             $proof=Assert-WssCiWorkflowAuthorization ([string]$approval.candidate.run_id)
             Assert-UnitySameCandidate $proof.candidate $approval.candidate
-            Assert-UnityFanoutSources $request.inputs.wrapper_sha $approval.gui.source_sha
-        }
-        $env:GH_TOKEN=$WriteToken
-        try { $null=Invoke-UnityGh -Arguments @('api','--method','POST',"repos/$UnityGuiRepository/actions/workflows/promote-integration.yml/dispatches",'--input',$RequestPath) }
-        catch { throw 'GUI dispatch failed or uncertain; inspect remote state before any replay.' }
-    } finally { $env:GH_TOKEN=$original }
+    }
+    Send-WssCiApplicationDispatch $UnityGuiRepository $RequestPath $ReadToken $WriteToken $UnityWrapperRepository "unity-gui-dispatch-$($request.inputs.wrapper_sha)" $sources -AuthorizeMain $authorizeMain
 }
 function Assert-UnityMergedWrapper([string]$Sha,[string]$PrNumber,$Approval) {
     Assert-UnitySha $Sha

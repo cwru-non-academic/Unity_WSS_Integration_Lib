@@ -139,7 +139,7 @@ jobs:
         if: always()
         with:
           name: unity-preflight-platform-${{ inputs.role }}-${{ matrix.label }}
-          retention-days: 14
+          retention-days: 90
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/platform-results/*.json
@@ -263,7 +263,7 @@ jobs:
         if: always()
         with:
           name: unity-preflight-platform-${{ inputs.role }}-${{ matrix.label }}
-          retention-days: 14
+          retention-days: 90
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/platform-results/*.json

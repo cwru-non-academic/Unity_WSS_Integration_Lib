@@ -63,5 +63,5 @@ jobs:
         with:
           name: wss-candidate-provenance
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
           path: ${{ runner.temp }}/candidate-provenance/candidate.json

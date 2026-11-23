@@ -60,7 +60,11 @@ function Invoke-UnityGh([string[]]$Arguments) {
         $sha=if ($path -clike "repos/$UnityWrapperRepository/*") { $script:wrapperHead } else { $script:guiHead }
         return (@{object=@{sha=$sha}} | ConvertTo-Json)
     }
-    if ($path -like '*/workflows/promote-integration.yml/runs?*') { return (ConvertTo-Json -InputObject @(@{workflow_runs=@($script:listed)}) -Depth 20) }
+    if ($path -eq "repos/$UnityWrapperRepository/pulls/40") { return (@{merged=$true;merge_commit_sha=$wrapper;merged_at='2026-11-20T12:00:00Z'} | ConvertTo-Json) }
+    if ($path -like '*/workflows/promote-integration.yml/runs?*') {
+        if ($path -cnotlike '*&created=%3E%3D2026-11-20T12%3A00%3A00Z&*') { throw 'Application promotion search was not limited to this merge.' }
+        return (ConvertTo-Json -InputObject @(@{workflow_runs=@($script:listed)}) -Depth 20)
+    }
     if ($path -like '*/actions/runs/*') { return ($script:detail | ConvertTo-Json -Depth 20) }
     if ($path -like '*/actions/artifacts?*') { return (ConvertTo-Json -InputObject @(@{artifacts=@($script:intents)}) -Depth 20) }
     throw "Unexpected test API path: $path"
@@ -78,24 +82,24 @@ try {
     Assert-UnityFanoutSources $wrapper $approval.gui.source_sha;$count++
     $script:wrapperHead='4'*40;Reject { Assert-UnityFanoutSources $wrapper $approval.gui.source_sha } 'Fanout source moved*';$script:wrapperHead=$wrapper
     $script:guiHead='4'*40;Reject { Assert-UnityFanoutSources $wrapper $approval.gui.source_sha } 'Fanout source moved*';$script:guiHead=$approval.gui.source_sha
-    if (Get-UnityGuiDispatchReuse $approval $wrapper) { throw 'Absent dispatch was reused.' };$count++
+    if (Get-UnityGuiDispatchReuse $approval $wrapper '40') { throw 'Absent dispatch was reused.' };$count++
     $script:listed=@($prior)
-    if (!(Get-UnityGuiDispatchReuse $approval $wrapper)) { throw 'Exact successful run was not reused.' };$count++
+    if (!(Get-UnityGuiDispatchReuse $approval $wrapper '40')) { throw 'Exact successful run was not reused.' };$count++
     foreach ($field in @('id','repository','head_repository','path','event','head_sha','head_branch','display_title')) {
         $script:detail=Copy-Value $prior
         if ($field -in @('repository','head_repository')) { $script:detail.$field.full_name='other/repo' }
         elseif ($field -ceq 'id') { $script:detail.id=51 }
         else { $script:detail.$field='wrong' }
-        Reject { Get-UnityGuiDispatchReuse $approval $wrapper } 'Common application dispatch proof failed*'
+        Reject { Get-UnityGuiDispatchReuse $approval $wrapper '40' } 'Common application dispatch proof failed*'
     }
     foreach ($result in @('failure','cancelled','timed_out','skipped','neutral','action_required')) {
         $script:detail=Copy-Value $prior;$script:detail.conclusion=$result
-        Reject { Get-UnityGuiDispatchReuse $approval $wrapper } 'Common application dispatch proof failed*'
+        Reject { Get-UnityGuiDispatchReuse $approval $wrapper '40' } 'Common application dispatch proof failed*'
     }
     $script:detail=Copy-Value $prior;$script:detail.status='in_progress'
-    Reject { Get-UnityGuiDispatchReuse $approval $wrapper } 'Common application dispatch proof failed*'
+    Reject { Get-UnityGuiDispatchReuse $approval $wrapper '40' } 'Common application dispatch proof failed*'
     $script:listed=@($prior,$prior)
-    Reject { Get-UnityGuiDispatchReuse $approval $wrapper } 'Common application dispatch proof failed*'
+    Reject { Get-UnityGuiDispatchReuse $approval $wrapper '40' } 'Common application dispatch proof failed*'
     $script:listed=@();$script:detail=$prior
     Assert-UnityGuiDispatchIntent $wrapper;$count++
     Reject { Assert-UnityGuiDispatchIntent $wrapper -RequireCurrent } 'Common application dispatch proof failed*'
@@ -113,7 +117,7 @@ try {
         $env:GITHUB_RUN_ATTEMPT='1'
     }
     $script:intents=@($intent)
-    @{ref='dev';inputs=@{wrapper_sha=$wrapper;approval_json=($approval | ConvertTo-Json -Depth 10 -Compress)}} | ConvertTo-Json -Depth 15 | Set-Content $temp
+    @{ref='dev';inputs=@{wrapper_sha=$wrapper;wrapper_pr='40';approval_json=($approval | ConvertTo-Json -Depth 10 -Compress)}} | ConvertTo-Json -Depth 15 | Set-Content $temp
     # A source change after initial validation must prevent the eventual write.
     Assert-UnityFanoutSources $wrapper $approval.gui.source_sha
     $script:guiHead='4'*40

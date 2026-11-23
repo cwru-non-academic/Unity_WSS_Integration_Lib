@@ -14,7 +14,7 @@ Assert-UnityApproval $approval (Join-Path $WorkRoot 'evidence') $config
 Assert-UnityMergedWrapper $pr.merge_commit_sha ([string]$pr.number) $approval
 $body=@{ref=(Get-WssCiChannel);inputs=@{wrapper_sha=$pr.merge_commit_sha;wrapper_pr=[string]$pr.number;approval_json=($approval | ConvertTo-Json -Depth 8 -Compress)}} | ConvertTo-Json -Depth 6 -Compress
 Assert-UnityFanoutSources $pr.merge_commit_sha $approval.gui.source_sha
-if (Get-UnityGuiDispatchReuse $approval $pr.merge_commit_sha) { 'dispatch_needed=false' >> $env:GITHUB_OUTPUT; Write-Output 'Exact successful GUI promotion verified; no redispatch.'; exit 0 }
+if (Get-UnityGuiDispatchReuse $approval $pr.merge_commit_sha ([string]$pr.number)) { 'dispatch_needed=false' >> $env:GITHUB_OUTPUT; Write-Output 'Exact successful GUI promotion verified; no redispatch.'; exit 0 }
 Assert-UnityGuiDispatchIntent $pr.merge_commit_sha
 [IO.File]::WriteAllText((Join-Path $WorkRoot 'gui-dispatch.json'),$body)
 'dispatch_needed=true' >> $env:GITHUB_OUTPUT

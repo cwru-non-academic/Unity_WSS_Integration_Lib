@@ -234,14 +234,13 @@ function Assert-UnityUnchangedFanoutBarrier([string]$ExpectedMergeSha,[string]$C
     Assert-UnitySha $CurrentMergeSha
     if ($CurrentMergeSha -cne $ExpectedMergeSha) { throw 'Shared barrier integration changed before application write credentials.' }
 }
-function Get-UnityGuiDispatchReuse($Approval,[string]$WrapperSha) {
+function Get-UnityGuiDispatchReuse($Approval,[string]$WrapperSha,[string]$WrapperPr) {
     . "$PSScriptRoot/wss-ci/DispatchProof.ps1"
+    if ($WrapperPr -cnotmatch '^[1-9][0-9]*$') { throw 'Invalid integration PR for dispatch discovery.' }
+    $pr=Invoke-UnityGh -Arguments @('api',"repos/$UnityWrapperRepository/pulls/$WrapperPr") | ConvertFrom-Json
+    if (!$pr.merged -or $pr.merge_commit_sha -cne $WrapperSha) { throw 'Integration PR does not identify the dispatch merge.' }
     $title="Promote Integration $WrapperSha / wss-$($Approval.candidate.run_id)-$($Approval.candidate.artifact_id)"
-    $repo='cwru-non-academic/GUI_Unity_WSS_Application'
-    $pages=Invoke-UnityGh -Arguments @('api','--paginate','--slurp',"repos/$repo/actions/workflows/promote-integration.yml/runs?event=workflow_dispatch&per_page=100")|ConvertFrom-Json
-    $runs=@($pages|ForEach-Object {$_.workflow_runs}|Where-Object display_title -CEQ $title)
-    $run=if($runs.Count -eq 1 -and [string]$runs[0].id -cmatch '^[1-9][0-9]*$'){Invoke-UnityGh -Arguments @('api',"repos/$repo/actions/runs/$($runs[0].id)")|ConvertFrom-Json}else{$null}
-    Invoke-WssCiDispatchProof @{operation='reuse';runs=$runs;run=$run;expected=@{repository=$repo;source_sha=$Approval.gui.source_sha;title=$title}}
+    Test-WssCiApplicationDispatchReuse $UnityGuiRepository $Approval.gui.source_sha $title $pr.merged_at Invoke-UnityGh
 }
 
 function Assert-UnityGuiDispatchIntent([string]$WrapperSha,[switch]$RequireCurrent) {
@@ -261,7 +260,7 @@ function Send-UnityGuiDispatch([string]$RequestPath,[string]$ReadToken,[string]$
     try {
         $env:GH_TOKEN=$ReadToken
         Assert-UnityFanoutSources $request.inputs.wrapper_sha $approval.gui.source_sha
-        if (Get-UnityGuiDispatchReuse $approval $request.inputs.wrapper_sha) { return }
+        if (Get-UnityGuiDispatchReuse $approval $request.inputs.wrapper_sha $request.inputs.wrapper_pr) { return }
         Assert-UnityGuiDispatchIntent $request.inputs.wrapper_sha -RequireCurrent
         if((Get-WssCiChannel) -ceq 'main'){
             $source=(& git -C $env:GITHUB_WORKSPACE rev-parse HEAD).Trim()

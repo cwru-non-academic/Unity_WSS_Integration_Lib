@@ -3,6 +3,12 @@ C# class that has all the methods to communicate with the WSS and software speci
 
 All documentation about the API and other implementations can be found in [GitHub Pages](https://cwru-non-academic.github.io/WSS_Documentation/).
 
+## Try the library without hardware
+
+Open the [Unity GUI application quickstart](https://github.com/cwru-non-academic/GUI_Unity_WSS_Application#first-stimulation-in-the-unity-editor). Its Console scene contains a configured `Stimulation` component. Select **Test** in the Inspector before Play mode to exercise the UI without opening a live transport. The GUI uses its pinned wrapper revision.
+
+To add the wrapper to a Unity project, [add it as a submodule](#add-the-library-to-a-unity-project) and use the Unity Editor version pinned by that project. To exercise this checkout's .NET lifecycle tests, see [Local lifecycle tests](#local-lifecycle-tests).
+
 ## Configuration reload
 
 This source requires Core's `WssConfigurationSnapshot` API. This candidate
@@ -59,8 +65,12 @@ dotnet test 'Tests~/HostLifecycle/Wss.Unity.HostLifecycle.Tests.csproj' -c Relea
 For binary-input testing, supply `WSS_ARTIFACT_DIR` instead of `WSS_CORE_PROJECT`.
 Release/provenance checks remain separate from this source lifecycle suite.
 
-## Unity Requirements
-Change NET framework 2.1 to NET Framework within Project settings > player > other settings > config.
+## Unity requirements
+
+Use the Editor version defined by the consuming project. In a new project, use
+**Edit → Project Settings → Player → Other Settings → Configuration** to select
+the **.NET Framework** API Compatibility Level needed by the wrapper. The Unity
+GUI configures its own project and ships the Unity Package Manager dependencies.
 
 ## CI checks
 
@@ -77,43 +87,28 @@ These checks run on .NET 9, **not the Unity engine**. A throwing shim supplies o
 
 Candidate preflight runs the same three platform checks against independently resolved exact producer artifacts. Promotion requires their successful completion in addition to the original canonical evidence, source, fixture, and projection gates. Platform evidence records the host and unsupported transport boundary separately from Unity execution.
 
-## How to add a submodule to exiting project
-1. Close other software using the code solution (Unity, Visual Studio, etc)
-2. If using git desktop, open the command prompt by going to `Repository>Open in Command Prompt`
-3. Use command `git submodule add <submoduleURL> <pathInProject>` 
-	- if using a submodule inside of Unity make sure the path is inside the Assests folder
-	- Ex HTTPS: `git submodule add https://github.com/cwru-non-academic/WSSInterfacingCode Assets\SubModules\WSSInterfacingModule`
- 	- Ex SSH: `git submodule add git@github.com:cwru-non-academic/HFI_WSS_Interface.git Assets\SubModules\WSSInterfacingModule`
-4. Click `Current repository>Add>Add existing repository..` and locate the folder where you installed the submodule `<pathInProject>` 
-5. Remove old scripts from the project that are now part of the submodule
-6. Open solution dependent software and let it refactor.
-7. (Unity Only) Make sure all you scripts in the scene are still available and linked correctly.
-8. (Unity only) Add `"com.unity.nuget.newtonsoft-json": "3.2.1",` to your package manager manifest under dependencies found in `<project>/Packages/manifest.json`
+## Add the library to a Unity project
 
-## How to commit a git project that has submodules (Git Desktop)
-1. This only applies if the changes were made to the submodule, otherwise just commit as normal.
-2. Inside of the git Desktop a warning will appear that says there are submodule chnages.
-3. Changes to submodules must be commited first in the submodules repo.
-4. If the submodule repo is already setup, just click open repository shortcut under the submodule changes warning.
-5. If it is not setup, click the shortcut to add it to Git Desktop.
-6. Once in the submodule repo, commit the changes as normal.
-7. Return to the main repo and commit the changes there (The chnage in commit ID will be not be selected by default. select it and then commit). 
+For an existing WSS application checkout, use `git submodule update --init --recursive`
+from the application root to restore its pinned wrapper. For a new consuming
+Unity project, add the current library repository from the project root:
 
-## How to commit a git project that has submodules (Git CMD)
-`git clone --recursive git@github.com:cwru-non-academic/HFI_WSS_Interface.git`
+```bash
+git submodule add https://github.com/cwru-non-academic/Unity_WSS_Integration_Lib.git Assets/SubModules/WSSInterfacingModule
+```
 
-## How to pull a submodule change (Git Desktop)
-1. Make sure the git submodule repo is already part of your repos in git desktop
-2. If not add it by following `How to add a submodule to exiting project`
-3. Go to the submodule repo and pull changes as normal. 
-4. Pulling a submodule will add a change in commit ID to the main repo. 
-	- Multiple changes in commit ID can be commited to the main repo as a single commit and together with other changes to the main repo.
+Check out the intended released wrapper revision in the new submodule and
+commit the recorded submodule revision in the consuming project. If the
+project does not already depend on `com.unity.nuget.newtonsoft-json`, add
+version `3.2.1` to `Packages/manifest.json`. On import, check the Unity Console
+for package and plugin errors before adding the desired stimulation component.
 
-## How to update the DLLs
-1. Download the desired release version of the DLLs from [Releases](https://github.com/cwru-non-academic/WSSCoreInterface/releases).  
-2. Clear the old DLLs in `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.  
-3. Extract the ZIP file downloaded from the GitHub release page.  
-4. Paste the entire contents of the `WSS_Core_Interface` folder into `SubModules\WSSInterfacingModule\Plugins\WSS_Core_Interface`.
+## Update the wrapper or Core dependency
+
+For application updates, change the wrapper pin through a reviewed application
+change. If you maintain the wrapper's Core payload, follow the [Core distribution reference](https://github.com/cwru-non-academic/WSSCore#one-universal-distribution)
+and the candidate checks above. Adopt the full payload with its Unity import
+settings and verify it on the target platform before advancing an application pin.
 
 ## API and other Documentation
 All documentation reagarding hardware, API, and communication protocols can be found here [WSS Docs](https://cwru-non-academic.github.io/WSS_Documentation/).

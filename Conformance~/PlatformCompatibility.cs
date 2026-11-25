@@ -44,8 +44,26 @@ internal static class PlatformCompatibility
         AssertMacPayload(AppContext.BaseDirectory, macDeclared);
         string runtime = OperatingSystem.IsWindows() ? "win" : "unix";
         string relative = Path.Combine("runtimes", runtime, "lib", "net8.0", "System.IO.Ports.dll");
-        using (var serial = WssTransportSupport.Create(WssTransportType.Serial, false,
-            OperatingSystem.IsWindows() ? "COM1" : "/dev/ttyWssUnitySmoke")) { }
+        string diagnosticPort = OperatingSystem.IsLinux() ? $"/dev/wss-ci-{Guid.NewGuid():N}" :
+            OperatingSystem.IsWindows() ? "COM1" : "/dev/ttyWssUnitySmoke";
+        using (var serial = WssTransportSupport.Create(WssTransportType.Serial, false, diagnosticPort))
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                Require(!File.Exists(diagnosticPort) && !Directory.Exists(diagnosticPort),
+                    $"Expected a nonexistent diagnostic port: {diagnosticPort}");
+                try
+                {
+                    serial.ConnectAsync().GetAwaiter().GetResult();
+                    throw new InvalidOperationException($"Unexpectedly opened {diagnosticPort}");
+                }
+                catch (Exception error) when ((error is IOException or UnauthorizedAccessException) &&
+                                              error.Message.Contains(diagnosticPort, StringComparison.Ordinal))
+                {
+                    Console.WriteLine("PASS: Linux production Serial selector reached native open and rejected a nonexistent port.");
+                }
+            }
+        }
         Require(Path.GetFullPath(typeof(SerialPort).Assembly.Location) ==
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relative)), "Wrong Serial runtime location.");
         Require(typeof(SerialPort).Assembly.GetName().Version.Major == 8, "Wrong Serial runtime version.");
@@ -144,7 +162,10 @@ internal static class PlatformCompatibility
         {
             schema = "wss-dotnet-platform-probe/v1", execution = "dotnet", unity_executed = false,
             os = RuntimeInformation.OSDescription, architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            serial = "exact packaged OS runtime selected; construction only", ble, macos_backend_declared = macDeclared,
+            serial = OperatingSystem.IsLinux()
+                ? "exact packaged OS runtime selected; nonexistent port rejected"
+                : "exact packaged OS runtime selected; construction only",
+            ble, macos_backend_declared = macDeclared,
             macos_native_abi_verified = OperatingSystem.IsMacOS() && macDeclared, hardware_access = false
         }, new JsonSerializerOptions { WriteIndented = true }));
     }
